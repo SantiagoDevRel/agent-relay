@@ -6,11 +6,13 @@ The live collection loop runs no models and never modifies provider data. Planni
 
 ## Clean installation
 
-This is a publication candidate with a new independent history. No public GitHub repository or release has been created. Extract the reviewed source or clone the repository once its owner has approved publication, then enter the checkout.
+This repository has a new independent history and contains the reviewed product source. Clone it into a separate directory. Keep private configuration and runtime data outside the checkout.
 
 Prerequisites: Windows, Node.js 22.13 or newer with built-in `node:sqlite`, npm and Git. Chrome and Windows Terminal are needed for the app window and native chat actions. Install Claude Code or Codex separately and log in with an existing supported account if you want collection or managed execution. No provider API key is required by Relay.
 
 ```powershell
+git clone https://github.com/SantiagoDevRel/agent-relay.git
+cd agent-relay
 npm.cmd ci --no-audit --no-fund
 npm.cmd run typecheck
 npm.cmd run build
