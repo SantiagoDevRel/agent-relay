@@ -2,6 +2,7 @@
   "name": "chats-dashboard",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Local, read-only live dashboard of your Claude Code and Codex CLI chats.",
   "type": "module",
   "scripts": {

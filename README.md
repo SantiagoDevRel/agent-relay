@@ -111,4 +111,8 @@ Tests use isolated homes, fake providers, hidden consoles and independent Git fi
 
 ## License and attribution
 
-The project owner's license selection is pending. No license for the original Agent Relay code is granted by this candidate; choose one explicitly before distributing it as open source. Do not apply third-party licenses to the whole project. Included LobeHub brand icons retain their MIT attribution and complete license in [NOTICE.md](NOTICE.md). Dependency licenses are retained by `npm ci`; inspect the pinned dependency license inventory before redistribution. Brand assets do not imply provider endorsement.
+Agent Relay is available under the [MIT License](LICENSE). Anyone may use, modify and redistribute it, including commercially, provided the copyright and permission notice are retained.
+
+The software is provided **as is, without warranty**. The maintainers do not guarantee security, absence of vulnerabilities, suitability for a particular purpose, availability or continued support. Security checks and passing tests do not certify that the software is vulnerability-free. See [LICENSE](LICENSE) for the complete warranty and liability terms.
+
+Third-party assets and dependencies retain their own licenses. Included LobeHub brand icons retain their MIT attribution and complete license in [NOTICE.md](NOTICE.md). Dependency licenses are retained by `npm ci`; inspect the pinned dependency license inventory before redistribution. Brand assets do not imply provider endorsement.
