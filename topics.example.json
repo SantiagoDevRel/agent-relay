@@ -1,0 +1,21 @@
+{
+  "topics": [
+    {
+      "topic": "Development",
+      "folders": [
+        "sample-app"
+      ]
+    },
+    {
+      "topic": "MCP",
+      "folders": [
+        "projects/example-team/MCP"
+      ]
+    },
+    {
+      "topic": "Documentation",
+      "folders": [],
+      "titleRegex": "documentation"
+    }
+  ]
+}

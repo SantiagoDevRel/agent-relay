@@ -1,0 +1,7 @@
+{
+  "CHATS_WORKSPACE_ROOT": "C:/Projects",
+  "CHATS_TOPICS_FILE": "C:/RelayLocal/topics.local.json",
+  "CHATS_SUMMARY_URL": "http://127.0.0.1:11434",
+  "CHATS_SUMMARY_MODEL": "gpt-oss:20b",
+  "CHATS_SECRET_SCANNER": "C:/Tools/trufflehog.exe"
+}

@@ -1,0 +1,14 @@
+# Reversible local checkout adoption
+
+Keep the existing installation and private data untouched while validating the new checkout. Do not point shortcuts, startup entries, protocols or running services at an unverified candidate.
+
+1. Inventory the current server command/port, Desktop/Startup shortcuts, protocol registrations, Relay shims, installed skills and private app-data/provider/artifact directories. Record actual locations privately outside both checkouts.
+2. Copy the existing topics file to a new external private directory without overwriting any file. Verify its byte count and SHA-256. Create an external `config.local.json` with the existing workspace, topics, optional Ollama/probe/scanner settings and existing transport-session/notification identities if needed. Preserve original files as rollback sources.
+3. Install the pinned dependencies and build the independent checkout. Test using fake homes and a separate loopback port. Keep real provider inference, notifications, manual chat input and mobile configuration disabled during smoke tests. Test guards and mission integration with fake providers and isolated repositories.
+4. Verify the candidate loads the external private configuration, reads the same topic rules and selects the same data locations. Hash private config/state before and after read-only verification. Existing pending jobs must not restart automatically. Preserve browser storage by keeping the original port at eventual adoption.
+5. Record a rollback launcher targeting the original checkout, with the original environment and port. Test its configuration and availability without stopping the existing server or modifying shortcuts. An old server on the production port is the rollback target; do not start a second server there.
+6. Only after these checks, deliberately stop the original server through its normal owned shutdown mechanism, start the candidate on the existing port and verify real collection, favorite/note/settings persistence, transcript reading and installed-app behavior. Native sends/closes and live model turns require their own user authorization. Do not delete either installation.
+7. If the live cutover fails, stop only the newly started candidate and run the original launcher on the original port. Recheck unchanged private records before resuming. Keep the original installation until the owner deliberately retires it.
+8. Repoint existing shortcuts/protocols/shims only when ready to adopt; inspect each change and preserve exact previous targets privately. Do not run an installer blindly over user-owned entry points. Private Tailscale Serve can remain on the existing port; never replace another configuration.
+
+This candidate preparation does not itself change the active service, shortcuts, registry, installed skills or provider records. A successful isolated smoke does not certify the live cutover, external inference or remote-phone session.
