@@ -47,7 +47,7 @@ function providerOptions(spec,defaults={}){
  return {provider,model,effort};
 }
 function scope(value){
- if(typeof value!=='string'||!value||value.length>300||/[\\\u0000-\u001f:*?\[\]]/.test(value)||value.startsWith('/')||value.startsWith('-')||path.isAbsolute(value))throw fail('Scope must be a relative path without wildcards.');
+ if(typeof value!=='string'||!value||value.length>300||/[\\\u0000-\u001f\u007f:*?]/.test(value)||value.startsWith('/')||value.startsWith('-')||path.isAbsolute(value))throw fail('Scope must be a relative path without wildcards.');
  const parts=value.replace(/\/$/,'').split('/');
  if(parts.some(p=>!p||p==='.'||p==='..'||p.toLowerCase()==='.git')||SECRET.test(value))throw fail('Scope contains a protected path or escapes the project.');
  return value;
@@ -64,9 +64,15 @@ function checks(value,label){
   return [...command];
  });
 }
+function checkTimeouts(value,count){
+ if(value===undefined)return {};
+ if(!Array.isArray(value)||value.length!==count||Array.from(value).some(ms=>ms!==null&&(!Number.isInteger(ms)||ms<1||ms>43200000)))throw fail('checkTimeoutsMs must match checks, with null or integer milliseconds within 1–43200000.');
+ return {checkTimeoutsMs:[...value]};
+}
+export function verificationTimeout(remaining,requested,fallback){return Math.min(requested??fallback,Math.max(1,remaining));}
 
 export function normalizeMissionSpec(spec){
- object(spec,'The mission');keys(spec,['title','goal','project','provider','model','effort','limits','tasks','checks','planId','terminalWindow','terminalViews'],'The mission');
+ object(spec,'The mission');keys(spec,['title','goal','project','provider','model','effort','limits','tasks','checks','checkTimeoutsMs','planId','terminalWindow','terminalViews'],'The mission');
  const title=text(spec.title,'The title',1,160),goal=text(spec.goal,'The goal',10,20000,false);
  if(typeof spec.project!=='string'||!path.isAbsolute(spec.project)||spec.project.length>1000||/[\u0000-\u001f]/.test(spec.project))throw fail('The project must be an absolute path.');
  const options=providerOptions(spec),limits={...DEFAULT_LIMITS};
@@ -76,12 +82,12 @@ export function normalizeMissionSpec(spec){
  if(!Array.isArray(spec.tasks)||spec.tasks.length<1||spec.tasks.length>24)throw fail('A mission needs between 1 and 24 tasks.');
  const ids=new Set(),identityKeys=new Set();
  const tasks=spec.tasks.map(t=>{
-  object(t,'The task');keys(t,['id','title','prompt','dependsOn','files','checks','provider','model','effort'],'The task');
+  object(t,'The task');keys(t,['id','title','prompt','dependsOn','files','checks','checkTimeoutsMs','provider','model','effort'],'The task');
   if(typeof t.id!=='string'||!SLUG.test(t.id)||['__proto__','constructor','prototype','orchestrator','integration'].includes(t.id.toLowerCase())||identityKeys.has(t.id.toLowerCase()))throw fail('Task IDs are invalid, reserved or repeated (case-insensitive).');ids.add(t.id);identityKeys.add(t.id.toLowerCase());
   const dependsOn=t.dependsOn??[];
   if(!Array.isArray(dependsOn)||dependsOn.length>24||dependsOn.some(d=>typeof d!=='string'||!SLUG.test(d))||new Set(dependsOn).size!==dependsOn.length)throw fail('Invalid dependencies.');
   if(!Array.isArray(t.files)||t.files.length<1||t.files.length>100)throw fail('Each task needs between 1 and 100 file scopes.');
-  return {id:t.id,title:text(t.title,'The task title',1,160),prompt:text(t.prompt,'The instruction',5,20000,false),dependsOn:[...dependsOn],files:[...new Set(t.files.map(scope))],checks:checks(t.checks,'The task'),...providerOptions(t,options)};
+  return {id:t.id,title:text(t.title,'The task title',1,160),prompt:text(t.prompt,'The instruction',5,20000,false),dependsOn:[...dependsOn],files:[...new Set(t.files.map(scope))],checks:checks(t.checks,'The task'),...checkTimeouts(t.checkTimeoutsMs,t.checks.length),...providerOptions(t,options)};
  });
  const byId=new Map(tasks.map(t=>[t.id,t])),visiting=new Set(),visited=new Set();
  function visit(id){if(visiting.has(id))throw fail('The plan contains circular dependencies.');if(visited.has(id))return;visiting.add(id);for(const dep of byId.get(id).dependsOn){if(!ids.has(dep))throw fail(`Unknown dependency: ${dep}.`);visit(dep);}visiting.delete(id);visited.add(id);}
@@ -89,7 +95,7 @@ export function normalizeMissionSpec(spec){
  if(spec.planId!==undefined&&(typeof spec.planId!=='string'||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(spec.planId)))throw fail('Invalid plan ID.');
  if(spec.terminalWindow!==undefined&&(typeof spec.terminalWindow!=='string'||!/^agent-relay-[a-zA-Z0-9-]{1,64}$/.test(spec.terminalWindow)))throw fail('Invalid terminal window.');
  if(spec.terminalViews!==undefined&&typeof spec.terminalViews!=='boolean')throw fail('Terminal views must be a boolean.');
- return {title,goal,project:path.resolve(spec.project),...options,limits,tasks,checks:checks(spec.checks,'The mission'),terminalViews:spec.terminalViews===true,...(spec.planId?{planId:spec.planId}:{}),...(spec.terminalWindow?{terminalWindow:spec.terminalWindow}:{})};
+ return {title,goal,project:path.resolve(spec.project),...options,limits,tasks,checks:checks(spec.checks,'The mission'),...checkTimeouts(spec.checkTimeoutsMs,spec.checks.length),terminalViews:spec.terminalViews===true,...(spec.planId?{planId:spec.planId}:{}),...(spec.terminalWindow?{terminalWindow:spec.terminalWindow}:{})};
 }
 
 function overlapping(a,b){
@@ -133,7 +139,9 @@ async function baselineGit(artifacts,cwd,args,options={}){
 function regularSource(root,file,missing=false){
  // Validate geometry independently of the broad secret-name policy: existing clean
  // source such as secret-scan.mjs is safe to retain; changed protected paths are refused.
- scope(file.replace(/(?:secret|wallet)/ig,'protected'));let current=root;
+ if(typeof file!=='string'||!file||/[\u0000-\u001f\u007f]/.test(file)||path.isAbsolute(file)||process.platform==='win32'&&(/^[a-z]:/i.test(file)||file.includes('\\'))||file.split('/').some(part=>!part||part==='.'||part==='..'||part.toLowerCase()==='.git'))throw fail('Source path must be relative and stay inside the project.','scope',409);
+ if(SECRET.test(file.replace(/(?:secret|wallet)/ig,'protected')))throw fail('Source contains a protected path.','scope',409);
+ let current=root;
  for(const part of file.split('/')){current=path.join(current,part);if(!within(root,current))throw fail('Path is outside the project.','scope',409);try{const stat=fs.lstatSync(current);if(stat.isSymbolicLink())throw fail('The isolated copy does not support symbolic links.','symlink',409);}catch(error){if(missing&&error.code==='ENOENT')return false;throw error;}}
  if(!fs.lstatSync(current).isFile())throw fail('The copy supports only regular files.','file-type',409);return true;
 }
@@ -215,8 +223,8 @@ export class MissionManager{
  task(m,id){const t=m.tasks.find(t=>t.id===id);if(!t)throw fail('Task not found.','not-found',404);return t;}
  view(m){
   const counts=Object.fromEntries(['pending','running','checking','completed','attention'].map(s=>[s,m.tasks.filter(t=>t.status===s).length]));
-  const tasks=m.tasks.map(({id,title,dependsOn,files,checks,provider,model,effort,status,detail,sessionHandle,nativeId,turnsUsed,sessionsUsed,startedAt,completedAt,checksPassed,attempts,commit,deadline,deadlineReached})=>({id,title,dependsOn,files,checks,provider,model,effort,status,detail,sessionHandle,nativeId,turnsUsed,sessionsUsed,startedAt,completedAt,checksPassed,attempts,commit,deadline,deadlineReached:deadlineReached===true}));
-  return {id:m.id,title:m.title,goal:m.goal,project:m.project,planId:m.planId,terminalWindow:m.terminalWindow,terminalViews:m.terminalViews===true,provider:m.provider,model:m.model,effort:m.effort,status:m.status,detail:m.detail,createdAt:m.createdAt,updatedAt:m.updatedAt,deadline:m.deadline,deadlineReached:m.deadlineReached===true,baselineDirty:m.baseline?.source.dirty===true,deliveryMode:m.baseline?.source.dirty?'worktree':'fast-forward',limits:m.limits,sessionsUsed:m.sessionsUsed,turnsUsed:m.turnsUsed,events:m.events,integrationBranch:m.integrationBranch,verifiedHead:m.verifiedHead,counts,progress:{completed:counts.completed,total:tasks.length,percent:Math.round(counts.completed/tasks.length*100)},tasks,checks:m.checks,finalChecksPassed:m.finalChecksPassed===true};
+  const tasks=m.tasks.map(({id,title,dependsOn,files,checks,checkTimeoutsMs,provider,model,effort,status,detail,sessionHandle,nativeId,turnsUsed,sessionsUsed,startedAt,completedAt,checksPassed,attempts,commit,deadline,deadlineReached})=>({id,title,dependsOn,files,checks,checkTimeoutsMs,provider,model,effort,status,detail,sessionHandle,nativeId,turnsUsed,sessionsUsed,startedAt,completedAt,checksPassed,attempts,commit,deadline,deadlineReached:deadlineReached===true}));
+  return {id:m.id,title:m.title,goal:m.goal,project:m.project,planId:m.planId,terminalWindow:m.terminalWindow,terminalViews:m.terminalViews===true,provider:m.provider,model:m.model,effort:m.effort,status:m.status,detail:m.detail,createdAt:m.createdAt,updatedAt:m.updatedAt,deadline:m.deadline,deadlineReached:m.deadlineReached===true,baselineDirty:m.baseline?.source.dirty===true,deliveryMode:m.baseline?.source.dirty?'worktree':'fast-forward',limits:m.limits,sessionsUsed:m.sessionsUsed,turnsUsed:m.turnsUsed,events:m.events,integrationBranch:m.integrationBranch,verifiedHead:m.verifiedHead,counts,progress:{completed:counts.completed,total:tasks.length,percent:Math.round(counts.completed/tasks.length*100)},tasks,checks:m.checks,checkTimeoutsMs:m.checkTimeoutsMs,finalChecksPassed:m.finalChecksPassed===true};
  }
  publicState(){return this.jobs.map(m=>this.view(m));}
  async git(cwd,args,options={}){return baselineGit(this.artifacts,cwd,args,options);}
@@ -452,10 +460,10 @@ export class MissionManager{
  }
  async verifyTask(m,t,signal,expectedHead=t.baseHead){
   await this.changed(t,expectedHead);
-  for(const command of t.checks){
+  for(const [index,command] of t.checks.entries()){
    this.assertDeadline(m,t);
    this.append(t,`\n[Check] ${JSON.stringify(command)}\n`);
-   const result=await run(command,{cwd:t.worktree,signal,timeoutMs:Math.min(120000,Math.max(1,t.deadline-this.now())),onOutput:chunk=>this.append(t,chunk)});
+   const result=await run(command,{cwd:t.worktree,signal,timeoutMs:verificationTimeout(Math.min(t.deadline,m.deadline)-this.now(),t.checkTimeoutsMs?.[index],120000),onOutput:chunk=>this.append(t,chunk)});
    this.append(t,`\n[Check exit] ${result.exitCode}\n`);
    if(result.exitCode!==0)throw fail(`A check failed (exit ${result.exitCode}): ${JSON.stringify(command)}.`,'check-failed',409);
   }
@@ -484,12 +492,12 @@ export class MissionManager{
   this.event(m,'All tasks are integrated. Running final checks.');this.save();
   const promise=(async()=>{try{
    await this.prepareDependencies(m,m.integrationPath,{get provisionedDirectories(){return m.provisionedDirectories;},set provisionedDirectories(value){m.provisionedDirectories=value;},logFile:m.integrationLog},controller.signal,m.deadline,m.tasks.flatMap(t=>t.files));
-   for(const command of this.integrationChecks(m)){this.assertDeadline(m);this.append({logFile:m.integrationLog},`\n[Integration check] ${JSON.stringify(command)}\n`);const r=await run(command,{cwd:m.integrationPath,signal:controller.signal,timeoutMs:Math.min(180000,Math.max(1,m.deadline-this.now())),onOutput:chunk=>this.append({logFile:m.integrationLog},chunk)});this.append({logFile:m.integrationLog},`\n[Check exit] ${r.exitCode}\n`);if(r.exitCode!==0)throw fail(`Final verification failed: ${JSON.stringify(command)}.`,'check-failed',409);}
+   for(const {command,timeoutMs} of this.integrationChecks(m)){this.assertDeadline(m);this.append({logFile:m.integrationLog},`\n[Integration check] ${JSON.stringify(command)}\n`);const r=await run(command,{cwd:m.integrationPath,signal:controller.signal,timeoutMs:verificationTimeout(m.deadline-this.now(),timeoutMs,180000),onOutput:chunk=>this.append({logFile:m.integrationLog},chunk)});this.append({logFile:m.integrationLog},`\n[Check exit] ${r.exitCode}\n`);if(r.exitCode!==0)throw fail(`Final verification failed: ${JSON.stringify(command)}.`,'check-failed',409);}
    await this.serial(async()=>{if(controller.signal.aborted||['stopped','expired'].includes(m.status))return;this.assertDeadline(m);if((await this.git(m.integrationPath,['status','--porcelain=v1','--untracked-files=all'])).trim())throw fail('Final verification left integration changes. Review the worktree.','dirty-integration',409);const head=(await this.git(m.integrationPath,['rev-parse','HEAD'])).trim();await this.runClosureGate(m,controller.signal);this.assertDeadline(m);if((await this.git(m.integrationPath,['rev-parse','HEAD'])).trim()!==head||(await this.git(m.integrationPath,['status','--porcelain=v1','--untracked-files=all'])).trim())throw fail('The closure guard modified the candidate.','gate-mutated',409);m.verifiedHead=head;m.status='ready';m.finalChecksPassed=true;this.event(m,'Mission verified. Ready to apply to the original branch.');this.save();});
   }catch(e){await this.serial(()=>{if(m.status!=='stopped'){if(this.now()>=m.deadline)this.expire(m);else m.status='attention';}m.finalChecksPassed=false;this.event(m,`Integration: ${e.message}`);this.save();});}finally{clearTimeout(timer);}})();
   this.active.get(key).promise=promise;promise.finally(()=>{this.active.delete(key);if(!this.closed)this.tick().catch(()=>{});}).catch(()=>{});
  }
- integrationChecks(m){return [...new Map([...m.tasks.flatMap(t=>t.checks),...m.checks].map(command=>[JSON.stringify(command),command])).values()];}
+ integrationChecks(m){const entries=[...m.tasks,m].flatMap(owner=>owner.checks.map((command,index)=>({command,timeoutMs:owner.checkTimeoutsMs?.[index]??null})));return [...new Map(entries.map(check=>[JSON.stringify(check),check])).values()];}
  async missionDelta(m,options={}){
   const fields=(await this.git(m.integrationPath,['diff','--name-status','-z','--no-renames',m.baseline?.head??m.originalHead,'HEAD','--'],options)).split('\0').filter(Boolean),files=[];
   for(let i=0;i<fields.length;i+=2){const status=fields[i],name=fields[i+1];if(!name||!/^[AMT]$/.test(status))throw fail('Delivery does not permit deleting, renaming or modifying special Git files.','deletion',409);
@@ -541,7 +549,7 @@ export class MissionManager{
   if(integrationHead!==m.verifiedHead)throw fail('The integration revision changed after verification.','integration-changed',409);
   if((await this.git(m.integrationPath,['status','--porcelain=v1','--untracked-files=all'],options)).trim())throw fail('The integration worktree has changes after testing.','dirty-integration',409);
   // Re-run final checks immediately before applying. No merge if the candidate changed.
-  for(const command of this.integrationChecks(m)){this.append({logFile:m.integrationLog},`\n[Apply check] ${JSON.stringify(command)}\n`);const r=await run(command,{cwd:m.integrationPath,signal:controller.signal,timeoutMs:Math.min(180000,remaining()),onOutput:chunk=>this.append({logFile:m.integrationLog},chunk)});this.append({logFile:m.integrationLog},`\n[Check exit] ${r.exitCode}\n`);if(r.exitCode!==0)throw fail('Final verification before applying failed.','check-failed',409);}
+  for(const {command,timeoutMs} of this.integrationChecks(m)){this.append({logFile:m.integrationLog},`\n[Apply check] ${JSON.stringify(command)}\n`);const r=await run(command,{cwd:m.integrationPath,signal:controller.signal,timeoutMs:verificationTimeout(remaining(),timeoutMs,180000),onOutput:chunk=>this.append({logFile:m.integrationLog},chunk)});this.append({logFile:m.integrationLog},`\n[Check exit] ${r.exitCode}\n`);if(r.exitCode!==0)throw fail('Final verification before applying failed.','check-failed',409);}
   if((await this.git(m.integrationPath,['rev-parse','HEAD'],options)).trim()!==integrationHead||(await this.git(m.integrationPath,['status','--porcelain=v1','--untracked-files=all'],options)).trim())throw fail('Verification modified the candidate.','dirty-integration',409);
   remaining();await this.runClosureGate(m,controller.signal);
   if((await this.git(m.integrationPath,['rev-parse','HEAD'],options)).trim()!==integrationHead||(await this.git(m.integrationPath,['status','--porcelain=v1','--untracked-files=all'],options)).trim())throw fail('The closure guard modified the candidate.','gate-mutated',409);

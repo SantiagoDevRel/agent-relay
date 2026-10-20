@@ -88,6 +88,27 @@ Fable selections are blocked for managed Claude execution because headless use m
 - Missions have bounded parallelism, sessions, turns and deadlines. Worker checks are trusted project commands, not an OS sandbox. Shell access and subscription accounting cannot be described as exact spending isolation. Workers cannot recursively delegate, commit, delete existing resources or deploy.
 - Private prompts/transcripts and your selected projects can contain sensitive information. Do not publish the app-data directories, generated logs, screenshots of real chats or worktrees. A Git ignore rule alone does not protect an upload.
 
+## Missions on Next.js repositories
+
+Source snapshots and task scopes support literal App Router paths such as
+`app/[slug]/page.tsx`, `app/[...slug]/page.tsx`, `app/(marketing)/page.tsx` and
+`app/@modal/page.tsx`. Scopes match literal paths; `*`, `?`, traversal, `.git`,
+symlinks and protected files remain refused. Clean sources use fast-forward
+delivery; dirty sources retain their original HEAD, index and unrelated edits.
+The CLI waits up to six minutes for draft creation, including source preparation,
+without starting workers or extending mission budgets.
+
+Tasks and the mission may set an optional `checkTimeoutsMs` array aligned with
+their argument-array `checks`. For example, `"checks": [["npm", "run", "build"]],
+"checkTimeoutsMs": [900000]` allows fifteen minutes for the project's build.
+Each entry is `null` (use the default) or integer milliseconds from 1 to 43,200,000.
+Omitted arrays preserve the 120-second task and 180-second integration/apply defaults.
+Explicit timeouts follow their checks into integration and apply. Task checks are
+capped by the remaining task and mission deadlines; final checks by the mission
+deadline, and apply checks by its separate 30-minute operation deadline. Session,
+turn and admission budgets stay unchanged. Use meaningful checks from the target
+project; these commands run without a shell and cannot install dependencies.
+
 ## Verification and publication
 
 `public-files.json` is the exact reviewed staging allowlist. It excludes local config, dependency trees, generated builds, screenshots, provider records and runtime caches. All source and assets must be reviewed before the allowlist changes.

@@ -29,7 +29,7 @@ export class RelayClient {
     throw Error('Agent Relay did not respond at startup. Check the local server.');
   }
   async request(route, body) {
-    const options = body === undefined ? { signal: AbortSignal.timeout(15000) } : { method: 'POST', headers: { Origin: this.base, 'Content-Type': 'application/json', 'X-Chats-Token': this.token }, body: JSON.stringify(body), signal: AbortSignal.timeout(route.endsWith('/apply') ? 1860000 : route.endsWith('/plan') || route.endsWith('/refine') || route.endsWith('/message') ? 360000 : 45000) };
+    const options = body === undefined ? { signal: AbortSignal.timeout(15000) } : { method: 'POST', headers: { Origin: this.base, 'Content-Type': 'application/json', 'X-Chats-Token': this.token }, body: JSON.stringify(body), signal: AbortSignal.timeout(route.endsWith('/apply') ? 1860000 : route.endsWith('/create') || route.endsWith('/plan') || route.endsWith('/refine') || route.endsWith('/message') ? 360000 : 45000) };
     const response = await this.fetcher(this.base + route + (body === undefined ? `${route.includes('?') ? '&' : '?'}t=${this.token}` : ''), options);
     const value = await response.json(); if (!response.ok) throw Error(value.detail || value.error || `HTTP ${response.status}`); return value;
   }

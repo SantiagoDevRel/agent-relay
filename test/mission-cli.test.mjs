@@ -24,6 +24,13 @@ test('CLI shares local Host/Origin/token auth and preserves request fields witho
   assert.deepEqual(parseOptions(['create', '@contract.json', '--start', '--project', 'path with spaces']), { positional: ['create', '@contract.json'], options: { start: true, project: 'path with spaces' } });
   assert.throws(() => parseOptions(['--project']), /Missing/); assert.throws(() => new RelayClient({ port: 80 }), /port/);
 });
+test('draft creation allows bounded snapshot preparation without changing other operation deadlines', async t => {
+  const deadlines=[];t.mock.method(AbortSignal,'timeout',ms=>{deadlines.push(ms);return new AbortController().signal;});
+  const client=new RelayClient({fetcher:async()=>Response.json({id:'owned-draft'})});
+  for(const route of ['/api/missions/create','/api/missions/start','/api/missions/apply'])await client.request(route,{});
+  await client.request('/api/missions');
+  assert.deepEqual(deadlines,[360000,45000,1860000,15000]);
+});
 test('installer works idempotently and refuses an existing user-owned command', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-install-')), script = fileURLToPath(new URL('../scripts/install-relay.mjs', import.meta.url));
   try {

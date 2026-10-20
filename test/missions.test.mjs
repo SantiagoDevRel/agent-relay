@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {MissionManager,normalizeMissionSpec} from '../server/missions.mjs';
+import {MissionManager,normalizeMissionSpec,captureMissionSource,verificationTimeout} from '../server/missions.mjs';
 
 const node=process.execPath;
 const baselineCheck=[node,'-e',"const fs=require('fs');for(const f of ['a.txt','b.txt','shared.txt'])if(!fs.readFileSync(f,'utf8').trim())process.exit(1)"];
@@ -37,6 +37,92 @@ function localNpmFixture(f,directory=''){
  fs.mkdirSync(path.join(root,'node_modules'),{recursive:true});fs.writeFileSync(path.join(root,'node_modules','user-sentinel.txt'),'preserve user dependencies');
  return {root,manifest};
 }
+
+for(const dirty of [false,true])test(`Next.js source capture and delivery support literal routes (${dirty?'dirty source':'clean fast-forward'})`,async()=>{
+ const route='app/[slug]/page.tsx',extra='app/[slug]/draft.tsx',group='app/(marketing)/a.tsx',slot='app/@modal/b.tsx';
+ const f=await fixture(async arg=>{
+  assert.notEqual(arg.cwd,f.project);
+  assert.equal(fs.readFileSync(path.join(arg.cwd,route),'utf8'),dirty?'user route\n':'initial route\n');
+  if(dirty)assert.equal(fs.readFileSync(path.join(arg.cwd,extra),'utf8'),'user untracked\n');
+  fs.writeFileSync(path.join(arg.cwd,route),'verified route\n');return success();
+ });try{
+  for(const file of [route,group,slot]){fs.mkdirSync(path.dirname(path.join(f.project,file)),{recursive:true});fs.writeFileSync(path.join(f.project,file),'initial route\n');}
+  git(f.project,['add','--',route,group,slot]);git(f.project,['commit','-m','Next.js route fixture']);
+  if(dirty){fs.writeFileSync(path.join(f.project,route),'user route\n');fs.writeFileSync(path.join(f.project,extra),'user untracked\n');}
+  const head=git(f.project,['rev-parse','HEAD']),indexPath=path.resolve(f.project,git(f.project,['rev-parse','--git-path','index'])),index=fs.readFileSync(indexPath);
+  const check=[node,'-e',`if(require('fs').readFileSync(${JSON.stringify(route)},'utf8')!=='verified route\\n')process.exit(1)`];
+  // An ordinary declared scope isolates the original failure in source capture.
+  const draft=await f.manager.create(f.spec());assert.equal(draft.status,'draft');await f.manager.stop(draft.id);
+  const m=await f.manager.create(f.spec([task('route',{files:[route,group,slot],checks:[check]})],{checks:[check]}));
+  assert.equal(m.baselineDirty,dirty);assert.equal(f.calls.length,0);await f.manager.start(m.id);await ready(f,m.id);
+  const internal=f.manager.jobs.find(job=>job.id===m.id),candidate=internal.tasks[0];assert.ok(candidate.commit);
+  assert.equal(git(candidate.worktree,['show',`${candidate.commit}:${route}`]),'verified route');
+  assert.equal(git(internal.integrationPath,['show',`HEAD:${route}`]),'verified route');
+  assert.equal(fs.readFileSync(path.join(f.project,route),'utf8'),dirty?'user route\n':'initial route\n');
+  await f.manager.apply(m.id);assert.equal(fs.readFileSync(path.join(f.project,route),'utf8'),'verified route\n');
+  for(const file of [group,slot])assert.equal(fs.readFileSync(path.join(f.project,file),'utf8'),'initial route\n');
+  if(dirty){assert.equal(git(f.project,['rev-parse','HEAD']),head);assert.deepEqual(fs.readFileSync(indexPath),index);assert.equal(fs.readFileSync(path.join(f.project,extra),'utf8'),'user untracked\n');}
+  else{assert.equal(git(f.project,['rev-parse','HEAD']),internal.verifiedHead);assert.equal(git(f.project,['status','--porcelain']),'');}
+ }finally{await f.cleanup();}
+});
+
+test('Next.js scopes stay literal and retain protected-path, wildcard and containment guards',async()=>{
+ const f=await fixture(async arg=>{fs.mkdirSync(path.join(arg.cwd,'app','s'),{recursive:true});fs.writeFileSync(path.join(arg.cwd,'app','s','page.tsx'),'outside literal scope');return success();});try{
+  for(const file of ['app/[slug]/page.tsx','app/(group)/page.tsx','app/@slot/page.tsx'])assert.deepEqual(normalizeMissionSpec(f.spec([task('a',{files:[file]})])).tasks[0].files,[file]);
+  for(const file of ['app/*/page.tsx','app/?/page.tsx','app/[slug]/../page.tsx','app/[slug]/.git/config','app/[slug]/.env.local','app/[slug]/keys.json','app/[slug]/private.key','app/[slug]/secret.txt','app/\x7f/page.tsx'])assert.throws(()=>normalizeMissionSpec(f.spec([task('a',{files:[file]})])));
+  const m=await f.manager.create(f.spec([task('a',{files:['app/[slug]/page.tsx']})]));await f.manager.start(m.id);await until(()=>f.manager.publicState()[0].status==='attention','literal bracket scope refuses a different directory');assert.match(f.manager.publicState()[0].detail,/outside scope/);
+  fs.mkdirSync(path.join(f.project,'app','[slug]'),{recursive:true});fs.writeFileSync(path.join(f.project,'app','[slug]','.env.local'),'protected fixture\n');
+  await assert.rejects(f.manager.create(f.spec()),{code:'protected-source'});assert.equal(f.calls.length,1);
+ }finally{await f.cleanup();}
+});
+
+test('source capture accepts actual Git filenames independently of task scope syntax and refuses linked paths',async()=>{
+ const f=await fixture();try{
+  const files=process.platform==='win32'?['app/[...slug]/long-name.tsx']:['app/[...slug]/real:*?.tsx','a:b'];
+  for(const file of files){fs.mkdirSync(path.dirname(path.join(f.project,file)),{recursive:true});fs.writeFileSync(path.join(f.project,file),'literal source\n');}
+  const source=await captureMissionSource(f.project,f.args.artifacts);for(const file of files)assert.ok(source.entries.some(entry=>entry.name===file));
+  const outside=path.join(f.dir,'outside');fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,'page.tsx'),'outside\n');fs.symlinkSync(outside,path.join(f.project,'linked'),process.platform==='win32'?'junction':'dir');
+  await assert.rejects(captureMissionSource(f.project,f.args.artifacts),{code:'symlink'});
+  await assert.rejects(f.manager.create(f.spec([task('a',{files:['linked/page.tsx']})])),{code:'symlink'});assert.equal(f.calls.length,0);
+ }finally{await f.cleanup();}
+});
+
+test('per-check timeouts validate without changing defaults or mission budgets and retain integration overrides',async()=>{
+ const f=await fixture();try{
+  const spec=f.spec([task('a',{checkTimeoutsMs:[600000]})],{checkTimeoutsMs:[null]}),normalized=normalizeMissionSpec(spec);
+  assert.deepEqual(normalized.tasks[0].checkTimeoutsMs,[600000]);assert.deepEqual(normalized.checkTimeoutsMs,[null]);assert.deepEqual(normalized.limits,normalizeMissionSpec(f.spec()).limits);
+  for(const invalid of [[],[0],[-1],[1.5],[43200001],['1000'],[true],[1000,2000],{}]){
+   assert.throws(()=>normalizeMissionSpec(f.spec([task('a',{checkTimeoutsMs:invalid})])));
+   assert.throws(()=>normalizeMissionSpec(f.spec([task('a')],{checkTimeoutsMs:invalid})));
+  }
+  assert.equal(verificationTimeout(900000,600000,120000),600000);
+  assert.equal(verificationTimeout(50000,600000,120000),50000);
+  assert.equal(verificationTimeout(900000,null,120000),120000);
+  assert.equal(verificationTimeout(900000,undefined,180000),180000);
+  const entries=f.manager.integrationChecks({...normalized,checks:normalized.tasks[0].checks,checkTimeoutsMs:[300000]});assert.deepEqual(entries.map(entry=>entry.timeoutMs),[600000,300000]);
+  const m=await f.manager.create(spec);assert.deepEqual(f.manager.jobs[0].tasks[0].checkTimeoutsMs,[600000]);assert.deepEqual(m.tasks[0].checkTimeoutsMs,[600000]);assert.deepEqual(m.checkTimeoutsMs,[null]);assert.equal(m.status,'draft');
+ }finally{await f.cleanup();}
+});
+
+test('per-check timeout cancels a real task check before committing',async()=>{
+ const f=await fixture(async arg=>{fs.writeFileSync(path.join(arg.cwd,'a.txt'),'candidate\n');return success();});try{
+  const m=await f.manager.create(f.spec([task('a',{checks:[[node,'-e','setInterval(()=>{},1000)']],checkTimeoutsMs:[100]})]));await f.manager.start(m.id);
+  await until(()=>f.manager.publicState()[0].status==='attention','short check timeout');const t=f.manager.jobs[0].tasks[0];assert.match(t.detail,/timed out/);assert.equal(t.checksPassed,false);assert.equal(t.commit,undefined);assert.equal(git(t.worktree,['rev-parse','HEAD']),t.baseHead);
+ }finally{await f.cleanup();}
+});
+
+test('per-check timeout is enforced during final integration and apply without delivering a failed check',async()=>{
+ for(const phase of ['integration','apply']){
+  let f;f=await fixture(async arg=>{fs.writeFileSync(path.join(arg.cwd,'a.txt'),'candidate\n');if(phase==='integration')fs.writeFileSync(path.join(f.manager.jobs[0].integrationPath,'slow-check.marker'),'owned check control');return success();});try{
+   fs.writeFileSync(path.join(f.project,'.gitignore'),'slow-check.marker\n');git(f.project,['add','--','.gitignore']);git(f.project,['commit','-m','Ignored check control fixture']);
+   const head=git(f.project,['rev-parse','HEAD']),check=[node,'-e',"if(require('fs').existsSync('slow-check.marker'))setInterval(()=>{},1000)"];
+   const m=await f.manager.create(f.spec([task('a')],{checks:[check],checkTimeoutsMs:[100]}));await f.manager.start(m.id);
+   if(phase==='integration'){await until(()=>f.manager.publicState()[0].status==='attention','integration check timeout');assert.match(f.manager.publicState()[0].detail,/timed out/);assert.equal(f.manager.publicState()[0].finalChecksPassed,false);}
+   else{await ready(f,m.id);fs.writeFileSync(path.join(f.manager.jobs[0].integrationPath,'slow-check.marker'),'owned check control');await assert.rejects(f.manager.apply(m.id),{code:'timeout'});assert.equal(f.manager.publicState()[0].status,'ready');}
+   assert.equal(git(f.project,['rev-parse','HEAD']),head);assert.equal(fs.readFileSync(path.join(f.project,'a.txt'),'utf8'),'initial\n');assert.equal(f.calls.length,1);
+  }finally{await f.cleanup();}
+ }
+});
 
 test('structural validation rejects unknown fields, circular dependencies, escaping scopes and unbounded budgets',async()=>{
  const f=await fixture();try{
