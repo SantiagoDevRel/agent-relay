@@ -199,6 +199,7 @@
   "web/src/components/dashboard/ModelSelector.tsx",
   "web/src/components/dashboard/NativeChatDialog.tsx",
   "web/src/components/dashboard/ProjectSelector.tsx",
+  "web/src/components/dashboard/PromptLabPanel.tsx",
   "web/src/components/dashboard/PromptRefinement.tsx",
   "web/src/components/dashboard/Radar.tsx",
   "web/src/components/dashboard/RadarChatPreview.tsx",

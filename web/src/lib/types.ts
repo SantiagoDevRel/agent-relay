@@ -152,6 +152,8 @@ export interface ProjectFolders {
   root: ProjectFolder; current: ProjectFolder & { gitRoot?: string; dirty?: boolean };
   breadcrumbs: ProjectFolder[]; folders: ProjectFolder[]; errors: string[];
 }
+/** 'lab' is the standalone Prompt Lab page; 'mission' and 'relay' prepare their own forms. */
+export type PromptKind = 'mission' | 'relay' | 'lab';
 export interface PromptRefinementSpec {
   goal: string; acceptance: string; requirements: { id: string; literal: string; criterion: string }[];
   assumptions: string[]; questions: string[]; verification: string[];
@@ -163,7 +165,7 @@ export interface PromptRefinementDiagnostic {
   exitCode?: number | null; reason?: string; timedOut?: boolean; aborted?: boolean; timeoutMs?: number;
 }
 export interface PromptRefinementAttempt {
-  id: string; kind: 'mission' | 'relay'; status: 'refining' | 'ready' | 'needs_input' | 'attention';
+  id: string; kind: PromptKind; status: 'refining' | 'ready' | 'needs_input' | 'attention';
   provider: Tool; model: string; effort: string; createdAt: number; detail?: string;
   diagnostic?: PromptRefinementDiagnostic;
 }

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { ChatFacts, Snapshot, SummaryEntry, ServiceStatus, HistoryResult, Insights, PromptTemplate, Assistance, Chat, MissionCatalog, MissionSpec, Mission, MissionLimits, MissionOrchestrator, Tool, RelayProjects, ProjectFolders, PromptRefinementResult, PromptRefinementHistory, PromptRefinementLog, ModelSelection } from './types';
+import type { ChatFacts, Snapshot, SummaryEntry, ServiceStatus, HistoryResult, Insights, PromptTemplate, Assistance, Chat, MissionCatalog, MissionSpec, Mission, MissionLimits, MissionOrchestrator, Tool, RelayProjects, ProjectFolders, PromptRefinementResult, PromptRefinementHistory, PromptRefinementLog, ModelSelection, PromptKind } from './types';
 
 export type Connection = 'loading' | 'live' | 'disconnected' | 'off';
 type Store = { snapshot: Snapshot | null; connection: Connection };
@@ -140,8 +140,8 @@ export const stopRelay = (id: string) => post('/api/relay/stop', { id });
 export const getMissionCatalog = (signal?: AbortSignal) => get<MissionCatalog>('/api/missions/catalog', signal);
 export const getRelayProjects = (signal?: AbortSignal) => get<RelayProjects>('/api/projects', signal);
 export const getProjectFolders = (path?: string, signal?: AbortSignal) => get<ProjectFolders>(`/api/projects/folders${path ? `?path=${encodeURIComponent(path)}` : ''}`, signal);
-export const refinePrompt = (value: ModelSelection & { kind: 'mission' | 'relay'; project?: string; goal: string; acceptance?: string }) => post<PromptRefinementResult>('/api/prompts/refine', value, AbortSignal.timeout(960000));
-export const getPromptHistory = (kind: 'mission' | 'relay', signal?: AbortSignal) => get<PromptRefinementHistory>(`/api/prompts/history?kind=${kind}`, signal);
+export const refinePrompt = (value: ModelSelection & { kind: PromptKind; project?: string; goal: string; acceptance?: string }) => post<PromptRefinementResult>('/api/prompts/refine', value, AbortSignal.timeout(960000));
+export const getPromptHistory = (kind: PromptKind, signal?: AbortSignal) => get<PromptRefinementHistory>(`/api/prompts/history?kind=${kind}`, signal);
 export const getPromptLog = (id: string, signal?: AbortSignal) => get<PromptRefinementLog>(`/api/prompts/log?id=${encodeURIComponent(id)}`, signal);
 export const extendMission = (id: string, value: { minutes: number; taskId?: string }) => post('/api/missions/extend', { id, ...value });
 export const planMission = (value: { project: string; title: string; goal: string; provider: Tool; model: string; effort: string; limits: MissionLimits; terminalViews: boolean }) => post<{ spec: MissionSpec; orchestrator?: MissionOrchestrator }>('/api/missions/plan', value);

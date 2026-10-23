@@ -1,25 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Copy, FileText, RefreshCw, WandSparkles } from 'lucide-react';
 import { ApiError, getPromptHistory, getPromptLog, refinePrompt } from '@/lib/api';
-import type { MissionCatalog, ModelSelection, PromptRefinementHistory, PromptRefinementLog, PromptRefinementResult } from '@/lib/types';
+import type { MissionCatalog, ModelSelection, PromptKind, PromptRefinementHistory, PromptRefinementLog, PromptRefinementResult } from '@/lib/types';
 import { Button } from './Controls';
 import { ModelSelector, modelSelectionReady } from './ModelSelector';
 
+// Missions and Orchestrator apply the result to their form; the Prompt Lab page ('lab') copies it instead.
 export function PromptRefinement({ kind, goal, acceptance = '', project, catalog, disabled, onAdopt }: {
-  kind: 'mission' | 'relay'; goal: string; acceptance?: string; project?: string; catalog: MissionCatalog | null; disabled?: boolean;
-  onAdopt: (value: { goal: string; acceptance: string }) => void;
+  kind: PromptKind; goal: string; acceptance?: string; project?: string; catalog: MissionCatalog | null; disabled?: boolean;
+  onAdopt?: (value: { goal: string; acceptance: string }) => void;
 }) {
+  const lab = kind === 'lab';
   const [selection, setSelection] = useState<ModelSelection>({ provider: 'codex', model: '', effort: 'high' });
   const [result, setResult] = useState<PromptRefinementResult | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [finalGoal, setFinalGoal] = useState(''), [finalAcceptance, setFinalAcceptance] = useState(''), [answers, setAnswers] = useState<string[]>([]);
   const [source, setSource] = useState({ goal: '', acceptance: '' }), [adoptedGoal, setAdoptedGoal] = useState('');
   const [adoptedAcceptance, setAdoptedAcceptance] = useState('');
-  const [expanded, setExpanded] = useState(false), [history, setHistory] = useState<PromptRefinementHistory | null>(null);
+  const [expanded, setExpanded] = useState(lab), [history, setHistory] = useState<PromptRefinementHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false), [historyError, setHistoryError] = useState(''), [historyRevision, setHistoryRevision] = useState(0);
   const [attemptId, setAttemptId] = useState(''), [logOpen, setLogOpen] = useState(false);
   const [log, setLog] = useState<PromptRefinementLog | null>(null), [logLoading, setLogLoading] = useState(false), [logError, setLogError] = useState('');
   const [logRevision, setLogRevision] = useState(0);
   const [copiedOriginal, setCopiedOriginal] = useState(false), [copyError, setCopyError] = useState('');
+  const [copiedPrompt, setCopiedPrompt] = useState('');
   const requestSeq = useRef(0);
   const attempt = history?.attempts.find(item => item.id === attemptId);
   const attemptStatus = { refining: 'Preparing', ready: 'Ready', needs_input: 'Needs your answers', attention: 'Needs attention' };
@@ -46,7 +49,7 @@ export function PromptRefinement({ kind, goal, acceptance = '', project, catalog
   }, [expanded, logOpen, attemptId, logRevision]);
   const maxGoal = kind === 'relay' ? 4000 : 20000;
   const maxAcceptance = kind === 'relay' ? 6000 : 20000;
-  const combined = kind === 'mission' ? finalGoal : `${finalGoal}\n${finalAcceptance}`;
+  const combined = kind === 'relay' ? `${finalGoal}\n${finalAcceptance}` : finalGoal;
   const omitted = result?.spec.requirements.filter(item => item.literal.trim() && !combined.includes(item.literal.trim())) ?? [];
   const questions = result?.spec.questions ?? [];
   const answered = result?.status !== 'needs_input' || (questions.length > 0 && questions.every((_, index) => answers[index]?.trim()));
@@ -55,7 +58,7 @@ export function PromptRefinement({ kind, goal, acceptance = '', project, catalog
   async function improve() {
     if (busy || disabled || goal.trim().length < 10 || !modelSelectionReady(catalog, selection)) return;
     const seq = ++requestSeq.current, original = { goal, acceptance };
-    setBusy(true); setError(''); setAdoptedGoal(''); setResult(null); setLogOpen(false);
+    setBusy(true); setError(''); setAdoptedGoal(''); setCopiedPrompt(''); setResult(null); setLogOpen(false);
     try {
       const entry = await refinePrompt({ kind, goal, acceptance, ...(project ? { project } : {}), ...selection });
       if (seq !== requestSeq.current) return;
@@ -70,12 +73,17 @@ export function PromptRefinement({ kind, goal, acceptance = '', project, catalog
     }
     finally { if (seq === requestSeq.current) { setBusy(false); setHistoryRevision(current => current + 1); } }
   }
-  function adopt() {
+  async function adopt() {
     if (!valid || disabled) return;
     const clarification = questions.map((question, index) => answers[index]?.trim() ? `${question}\nAnswer: ${answers[index].trim()}` : '').filter(Boolean).join('\n\n');
     const adopted = `${finalGoal.trim()}${clarification ? `\n\nUser clarifications:\n${clarification}` : ''}`;
     if (adopted.length > maxGoal) { setError(`The final request exceeds ${maxGoal.toLocaleString('en-US')} characters. Shorten the explanation while keeping the original requirements.`); return; }
-    onAdopt({ goal: adopted, acceptance: finalAcceptance.trim() }); setAdoptedGoal(adopted); setAdoptedAcceptance(finalAcceptance.trim()); setError('');
+    if (lab) {
+      try { await navigator.clipboard.writeText(adopted); setCopiedPrompt(adopted); setError(''); }
+      catch { setCopiedPrompt(''); setError('Clipboard access failed. Select the improved prompt text and copy it manually.'); }
+      return;
+    }
+    onAdopt?.({ goal: adopted, acceptance: finalAcceptance.trim() }); setAdoptedGoal(adopted); setAdoptedAcceptance(finalAcceptance.trim()); setError('');
   }
   async function copyOriginal() {
     if (!log?.original) return;
@@ -84,14 +92,32 @@ export function PromptRefinement({ kind, goal, acceptance = '', project, catalog
       setCopiedOriginal(true); setCopyError('');
     } catch { setCopiedOriginal(false); setCopyError('Clipboard access failed. Open Your original request and select its text to copy it.'); }
   }
-  return <details className="prompt-refinement" onToggle={event => setExpanded(event.currentTarget.open)}><summary><WandSparkles size={16} aria-hidden="true" />Prepare request with AI</summary>
-    <div className="prompt-refinement-body">
-      <p className="dialog-note">Turn your text into testable requirements and criteria. Review and apply the result before starting.</p>
-      <ModelSelector label="AI that prepares the request" catalog={catalog} value={selection} onChange={setSelection} disabled={disabled || busy} />
-      <p className="dialog-note">This model only prepares the request in one read-only turn. {kind === 'relay' ? 'Implementation and review use the models of the two chats you select.' : 'Implementation agents have a separate model selection below.'} It uses your usual quota only when you press the button.</p>
-      <Button type="button" disabled={disabled || busy || goal.trim().length < 10 || !modelSelectionReady(catalog, selection)} onClick={improve}><WandSparkles size={14} />{busy ? 'Preparing request…' : 'Improve request with AI'}</Button>
+  const resultBlock = result ? <div className="prompt-refinement-result">
+    <h3>{lab ? 'Review the improved prompt' : 'Review the prepared request'}</h3>
+    <p className="dialog-note">Prepared with {result.provider === 'claude' ? 'Claude' : 'Codex'} · {result.model || 'default model'} · {result.effort || 'default reasoning'}</p>
+    <ol className="refinement-requirements">{result.spec.requirements.map(item => <li key={item.id}><p><strong>{item.id}</strong> · {item.literal}</p><p className="dialog-note">Criterion: {item.criterion}</p></li>)}</ol>
+    {result.spec.verification.length ? <details className="mission-evidence"><summary>Verification plan</summary><ul>{result.spec.verification.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
+    {result.spec.assumptions.length ? <details className="mission-evidence"><summary>AI assumptions</summary><ul>{result.spec.assumptions.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
+    {questions.length ? <div className="refinement-questions relay-fields"><h3>Clarify these decisions</h3>{questions.map((question, index) => <label key={index}>{question}<textarea rows={2} disabled={disabled || busy} value={answers[index] || ''} onChange={event => setAnswers(current => current.map((answer, position) => position === index ? event.target.value : answer))} placeholder="Your decision for this request" /></label>)}</div> : null}
+    <label className="assistant-field">{lab ? 'Improved prompt (editable)' : 'Editable final request'}<textarea rows={lab ? 14 : 6} disabled={disabled || busy} value={finalGoal} onChange={event => setFinalGoal(event.target.value)} /></label>
+    {kind === 'relay' ? <label className="assistant-field">Final review criteria<textarea rows={4} disabled={disabled || busy} value={finalAcceptance} onChange={event => setFinalAcceptance(event.target.value)} /></label> : null}
+    <details className="mission-evidence"><summary>Your original text</summary><pre className="refinement-original">{source.goal}{source.acceptance ? `\n\nOriginal criteria:\n${source.acceptance}` : ''}</pre></details>
+    {omitted.length ? <p className="assistant-warning" role="alert">Keep the original requirements in the final request: {omitted.map(item => item.id).join(', ')}.</p> : null}
+    {finalGoal.length > maxGoal || finalAcceptance.length > maxAcceptance ? <p className="assistant-warning" role="alert">The text exceeds the form limit. Shorten the explanation while keeping the original requirements.</p> : null}
+    {kind === 'relay' && finalAcceptance.trim().length < 10 ? <p className="dialog-note">Define review criteria before applying the request.</p> : null}
+    {stale ? <p className="dialog-note">You changed the original text after preparing it. Improve it again to include those changes.</p> : null}
+    <Button type="button" className="mission-primary" disabled={disabled || busy || !valid} onClick={adopt}>{lab ? <Copy size={14} /> : <Check size={14} />}{lab ? 'Copy improved prompt' : 'Apply prepared request'}</Button>
+    {adoptedGoal && goal === adoptedGoal ? <p className="dialog-note" role="status">Request applied to the form. You can review it before starting.</p> : null}
+    {lab && copiedPrompt ? <p className="dialog-note" role="status">Improved prompt copied. Paste it into the chat you want.</p> : null}
+  </div> : null;
+  const body = <div className="prompt-refinement-body">
+      {lab ? null : <p className="dialog-note">Turn your text into testable requirements and criteria. Review and apply the result before starting.</p>}
+      <ModelSelector label={lab ? 'AI that improves the prompt' : 'AI that prepares the request'} catalog={catalog} value={selection} onChange={setSelection} disabled={disabled || busy} />
+      <p className="dialog-note">{lab ? 'One read-only turn through your subscription, only when you press the button.' : <>This model only prepares the request in one read-only turn. {kind === 'relay' ? 'Implementation and review use the models of the two chats you select.' : 'Implementation agents have a separate model selection below.'} It uses your usual quota only when you press the button.</>}</p>
+      <Button type="button" className={lab ? 'mission-primary' : undefined} disabled={disabled || busy || goal.trim().length < 10 || !modelSelectionReady(catalog, selection)} onClick={improve}><WandSparkles size={14} />{busy ? (lab ? 'Improving prompt…' : 'Preparing request…') : lab ? 'Improve prompt' : 'Improve request with AI'}</Button>
       {busy ? <p className="dialog-note" role="status">The model can inspect the selected project for up to 15 minutes. This is one request; no retry starts automatically.</p> : null}
       {error ? <p className="assistant-warning" role="alert">{error}</p> : null}
+      {lab ? resultBlock : null}
       <div className="prompt-refinement-history">
         <h3>Preparation history</h3>
         <p className="dialog-note">Saved attempts survive a reload. Reading logs uses no model quota.</p>
@@ -127,23 +153,8 @@ export function PromptRefinement({ kind, goal, acceptance = '', project, catalog
           </> : null}
         </div> : null}
       </div>
-      {result ? <div className="prompt-refinement-result">
-        <h3>Review the prepared request</h3>
-        <p className="dialog-note">Prepared with {result.provider === 'claude' ? 'Claude' : 'Codex'} · {result.model || 'default model'} · {result.effort || 'default reasoning'}</p>
-        <ol className="refinement-requirements">{result.spec.requirements.map(item => <li key={item.id}><p><strong>{item.id}</strong> · {item.literal}</p><p className="dialog-note">Criterion: {item.criterion}</p></li>)}</ol>
-        {result.spec.verification.length ? <details className="mission-evidence"><summary>Verification plan</summary><ul>{result.spec.verification.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
-        {result.spec.assumptions.length ? <details className="mission-evidence"><summary>AI assumptions</summary><ul>{result.spec.assumptions.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
-        {questions.length ? <div className="refinement-questions relay-fields"><h3>Clarify these decisions</h3>{questions.map((question, index) => <label key={index}>{question}<textarea rows={2} disabled={disabled || busy} value={answers[index] || ''} onChange={event => setAnswers(current => current.map((answer, position) => position === index ? event.target.value : answer))} placeholder="Your decision for this request" /></label>)}</div> : null}
-        <label className="assistant-field">Editable final request<textarea rows={6} disabled={disabled || busy} value={finalGoal} onChange={event => setFinalGoal(event.target.value)} /></label>
-        {kind === 'relay' ? <label className="assistant-field">Final review criteria<textarea rows={4} disabled={disabled || busy} value={finalAcceptance} onChange={event => setFinalAcceptance(event.target.value)} /></label> : null}
-        <details className="mission-evidence"><summary>Your original text</summary><pre className="refinement-original">{source.goal}{source.acceptance ? `\n\nOriginal criteria:\n${source.acceptance}` : ''}</pre></details>
-        {omitted.length ? <p className="assistant-warning" role="alert">Keep the original requirements in the final request: {omitted.map(item => item.id).join(', ')}.</p> : null}
-        {finalGoal.length > maxGoal || finalAcceptance.length > maxAcceptance ? <p className="assistant-warning" role="alert">The text exceeds the form limit. Shorten the explanation while keeping the original requirements.</p> : null}
-        {kind === 'relay' && finalAcceptance.trim().length < 10 ? <p className="dialog-note">Define review criteria before applying the request.</p> : null}
-        {stale ? <p className="dialog-note">You changed the original text after preparing it. Improve it again to include those changes.</p> : null}
-        <Button type="button" className="mission-primary" disabled={disabled || busy || !valid} onClick={adopt}><Check size={14} />Apply prepared request</Button>
-        {adoptedGoal && goal === adoptedGoal ? <p className="dialog-note" role="status">Request applied to the form. You can review it before starting.</p> : null}
-      </div> : null}
-    </div>
-  </details>;
+      {lab ? null : resultBlock}
+    </div>;
+  return lab ? <section className="prompt-refinement prompt-lab-refinement" aria-label="Improve a prompt">{body}</section>
+    : <details className="prompt-refinement" onToggle={event => setExpanded(event.currentTarget.open)}><summary><WandSparkles size={16} aria-hidden="true" />Prepare request with AI</summary>{body}</details>;
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, CircleOff, Cpu, Download, ExternalLink, Folder, Gauge, GitPullRequestArrow, Layers, MessageSquare, Network, Pause, Play, Power, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, CircleOff, Cpu, Download, ExternalLink, Folder, Gauge, GitPullRequestArrow, Layers, MessageSquare, Network, Pause, Play, Power, RefreshCw, Search, WandSparkles, X } from 'lucide-react';
 import { useSnapshot, sendControl, setWindowDays, setShowAutomated, openWindowsUpdate } from '@/lib/api';
 import { TargetContext, type Target } from '@/lib/attention';
 import { installApp, useCanInstall } from '@/lib/install';
@@ -18,19 +18,21 @@ import { RelayPanel } from './RelayPanel';
 import { MissionPanel } from './MissionPanel';
 import { EvalsPanel } from './EvalsPanel';
 import { DgxPanel } from './DgxPanel';
+import { PromptLabPanel } from './PromptLabPanel';
 
 const STALE_MS = 30_000;
 const TARGET_MS = 2600;
 const TOAST_MS = { info: 6000, error: 10_000 };
 // Registered by setup-windows.ps1: starts the server without opening another window.
 const POWER_ON_URL = 'chats-dashboard:start';
-type Page = 'projects' | 'chats' | 'delivery' | 'orchestrator' | 'missions' | 'evals' | 'dgx';
+type Page = 'projects' | 'chats' | 'delivery' | 'orchestrator' | 'missions' | 'prompt-lab' | 'evals' | 'dgx';
 const PAGES = [
   { id: 'projects', label: 'Projects', Icon: Folder },
   { id: 'chats', label: 'Chats', Icon: MessageSquare },
   { id: 'delivery', label: 'Delivery', Icon: GitPullRequestArrow },
   { id: 'orchestrator', label: 'Orchestrator', Icon: GitPullRequestArrow },
   { id: 'missions', label: 'Missions', Icon: Network },
+  { id: 'prompt-lab', label: 'Prompt Lab', Icon: WandSparkles },
   { id: 'evals', label: 'Evals', Icon: Gauge },
   { id: 'dgx', label: 'DGX', Icon: Cpu },
 ] satisfies { id: Page; label: string; Icon: typeof Folder }[];
@@ -232,6 +234,7 @@ export function Dashboard() {
             <section id="page-delivery" className="dashboard-page" role="tabpanel" aria-labelledby="tab-delivery" hidden={page !== 'delivery'}><div className="panel"><DeliveryTable chats={chats} onSelect={select} /></div></section>
             <section id="page-orchestrator" className="dashboard-page" role="tabpanel" aria-labelledby="tab-orchestrator" hidden={page !== 'orchestrator'}><RelayPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'orchestrator'} /></section>
             <section id="page-missions" className="dashboard-page" role="tabpanel" aria-labelledby="tab-missions" hidden={page !== 'missions'}><MissionPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'missions'} /></section>
+            <section id="page-prompt-lab" className="dashboard-page" role="tabpanel" aria-labelledby="tab-prompt-lab" hidden={page !== 'prompt-lab'}><PromptLabPanel active={page === 'prompt-lab'} connected={connection === 'live'} /></section>
             <section id="page-evals" className="dashboard-page" role="tabpanel" aria-labelledby="tab-evals" hidden={page !== 'evals'}><EvalsPanel active={page === 'evals'} /></section>
             <section id="page-dgx" className="dashboard-page" role="tabpanel" aria-labelledby="tab-dgx" hidden={page !== 'dgx'}><DgxPanel active={page === 'dgx'} /></section>
           </> : connection === 'disconnected' ? <div className="empty-state" role="alert">

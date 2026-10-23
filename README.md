@@ -1,6 +1,6 @@
 # Agent Relay
 
-A local Windows control center for Claude Code and Codex CLI chats. Project and activity radars show work in progress; Chats provides attention, search, transcripts and explicit chat actions. Delivery shows observed Git and GitHub Actions evidence. Orchestrator coordinates an existing builder/tester pair. Missions prepares and runs bounded work in isolated Git worktrees.
+A local Windows control center for Claude Code and Codex CLI chats. Project and activity radars show work in progress; Chats provides attention, search, transcripts and explicit chat actions. Delivery shows observed Git and GitHub Actions evidence. Orchestrator coordinates an existing builder/tester pair. Missions prepares and runs bounded work in isolated Git worktrees. Prompt Lab improves any prompt you paste into a clearer, testable version to copy into another chat.
 
 The live collection loop runs no models and never modifies provider data. Planning, summaries, implementation and chat input occur only after an explicit user action. Relay is a private desktop application, not a hosted service.
 
@@ -69,7 +69,8 @@ The Relay installer creates marked shims in `~/.local/bin` and the two Relay ski
 | --- | --- |
 | Claude Code / Codex | Collectors, native transcript viewing, guarded input and managed CLI transport exist. Models/efforts are read from installed capability metadata. Login, entitlement and model availability are not inferred. New portable transport is verified with fake providers; no live subscription turn is part of regression testing. |
 | Existing-chat Orchestrator | Explicitly started pair cycles only; coordinator performs no inference. Requires actual native Windows console identity. |
-| Missions / request preparation | Implemented with isolated worktrees, scopes, executable checks and persistent budgets. Integration requires both bundled guards and an externally installed TruffleHog executable. Missing scanner blocks commits; no automatic installation. |
+| Missions / request preparation | Implemented with isolated worktrees, scopes, executable checks and persistent budgets. Integration requires both bundled guards and an externally installed TruffleHog executable. Missing scanner blocks commits; no automatic installation. Each managed Claude turn stops after 60 tool steps for workers and 24 for the planner and request preparation; Codex turns are bounded by the turn deadline only. |
+| Prompt Lab | Runs the same read-only request preparation (`agent-relay-spec`) on any prompt you paste, with an optional "what done looks like" and reference project. You copy the improved prompt; nothing is applied or started. It keeps its own preparation history. |
 | Ollama summary | Optional, click only; conversation text goes to the configured server. Installed model required. Default endpoint is local. Health uses tags/process APIs without inference. |
 | DGX GPU telemetry | Optional adapter to a user-supplied probe script. No bundled hardware integration or private host. Unconfigured/unavailable telemetry remains unknown. |
 | Relay Evals | Local transcript/Git metrics and a weekly report. Labels use your Codex or Claude CLI login (no API keys); the benchmark spends turns only with `--live`. Data stays in the per-user app-data directory. |

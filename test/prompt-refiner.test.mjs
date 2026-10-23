@@ -40,6 +40,18 @@ test('unresolved questions stay explicit; invented literal requirements and cont
   assert.throws(() => validatePromptSpec({ ...answer, requirements: [{ id: 'R1', literal: 'Charge each owner monthly', criterion: 'Invoices exist.' }] }, source, 'mission'), /traceability/);
   assert.throws(() => validatePromptSpec({ ...answer, questions: ['Unknown decision'] }, source, 'mission'), /do not match/);
 });
+test('Prompt Lab prepares one self-contained copyable prompt with its own history', async () => {
+  let prompt = '';
+  const f = fixture(async input => { prompt = fs.readFileSync(input.promptFile, 'utf8'); assert.equal(input.role, 'planner'); return { exitCode: 0, answer: JSON.stringify(answer) }; });
+  try {
+    const result = await f.refiner.refine({ ...request, kind: 'lab' });
+    assert.match(prompt, /Kind lab: the user will paste the improved goal into another agent chat/); assert.match(prompt, /Never replace a difficult requirement/);
+    assert.match(result.spec.goal, /^Original request \(all requirements remain in scope\):\nImplement login/);
+    assert.match(result.spec.goal, /Improved prompt:\nImplement login, preserve reports/); assert.ok(result.spec.goal.includes(answer.verification[0]));
+    assert.equal(f.refiner.history('lab').total, 1); assert.equal(f.refiner.history('mission').total, 0);
+    await assert.rejects(f.refiner.refine({ ...request, kind: 'other' }), { status: 400 });
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
 test('invalid inputs spend no turn; malformed output and interrupted refinements retain the original request', async () => {
   let calls = 0; const f = fixture(async () => { calls++; return { exitCode: 0, answer: 'not json' }; });
   try {

@@ -46,7 +46,7 @@ test('managed runner uses argv files, subscriptions, bounded roles, session evid
     const call = calls[0];assert.equal(call.command,process.execPath);assert.deepEqual(call.args.slice(1),['codex','new','@'+f.promptFile,f.cwd]);
     assert.equal(call.options.shell,undefined);assert.equal(call.options.cwd,f.cwd);assert.equal(call.options.windowsHide,true);
     assert.deepEqual(Object.keys(call.options.env).sort(),['AI_EFFORT','AI_MODE','AI_MODEL','AI_NO_AUTOMODE','AI_RELAY_MANAGED','AI_RELAY_MAX_TURNS','AI_TIMEOUT','PATH'].sort());
-    assert.equal(call.options.env.AI_RELAY_MAX_TURNS,'20'); assert.equal(call.options.env.AI_EFFORT,'ultra');
+    assert.equal(call.options.env.AI_RELAY_MAX_TURNS,'60'); assert.equal(call.options.env.AI_EFFORT,'ultra');
     assert.equal(budget.calls.length,1);assert.equal(budget.state.released,1);assert.ok(output.some(value=>value.channel==='stderr'));
     assert.ok(fs.readFileSync(f.outputFile,'utf8').includes('provider progress'));
   } finally {f.cleanup();}
@@ -58,7 +58,7 @@ test('resume reserves a turn without creating another session and planner restri
     const run=createMissionRunner({budget,spawnImpl:(command,args,options)=>{calls.push({args,options});const child=fakeChild();queueMicrotask(()=>{child.stdout.write(receipt('claude-abcdef','{"tasks":[]}'));child.finish();});return child;}});
     await run({...f,provider:'claude',sessionHandle:'claude-abcdef',model:'opus',effort:'max',role:'planner',timeoutMs:1000});
     assert.deepEqual(calls[0].args.slice(1),['claude','say','claude-abcdef','@'+f.promptFile]);
-    assert.equal(calls[0].options.env.AI_MODE,'plan');assert.equal(calls[0].options.env.AI_RELAY_READ_ONLY,'1');assert.equal(calls[0].options.env.AI_RELAY_MAX_TURNS,'8');
+    assert.equal(calls[0].options.env.AI_MODE,'plan');assert.equal(calls[0].options.env.AI_RELAY_READ_ONLY,'1');assert.equal(calls[0].options.env.AI_RELAY_MAX_TURNS,'24');
     assert.deepEqual(budget.calls,[{role:'planner',sessionHandle:'claude-abcdef'}]);assert.equal(budget.state.released,1);
   } finally {f.cleanup();}
 });

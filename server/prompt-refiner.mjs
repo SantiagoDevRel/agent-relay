@@ -53,6 +53,9 @@ function turnDiagnostic(result) {
   if (!result.answer) return { code: 'empty-answer', exitCode, reason: 'The provider finished without a captured specification. Your request and output are saved; review the log before retrying.' };
   return { code: 'completed', exitCode, reason: 'The provider completed its turn. The saved response is checked before the specification can be adopted.' };
 }
+// 'lab' is the standalone Prompt Lab page: the user copies the improved prompt instead of applying it to a form.
+const KINDS = ['mission', 'relay', 'lab'];
+const LAB_NOTE = 'Kind lab: the user will paste the improved goal into another agent chat, so make it a complete, self-contained prompt for that agent.\n';
 const fail = message => Object.assign(Error(message), { status: 422 });
 const text = (value, max) => typeof value === 'string' && value.trim() && value.length <= max;
 function list(value, max = 30) { return Array.isArray(value) && value.length <= max && value.every(item => text(item, 2000)); }
@@ -69,9 +72,9 @@ export function validatePromptSpec(raw, original, kind) {
   }
   if ((raw.status === 'ready' && raw.questions.length) || (raw.status === 'needs_input' && !raw.questions.length)) throw fail('The specification status and questions do not match.');
   // Keep the complete original request in the adopted implementation prompt.
-  let goal = `Original request (all requirements remain in scope):\n${original.goal}\n\nImplementation specification:\n${raw.goal}`;
+  let goal = `Original request (all requirements remain in scope):\n${original.goal}\n\n${kind === 'lab' ? 'Improved prompt' : 'Implementation specification'}:\n${raw.goal}`;
   const acceptance = `${original.acceptance ? `Original criteria:\n${original.acceptance}\n\n` : ''}${raw.acceptance}\n\nVerification:\n${raw.verification.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
-  if (kind === 'mission') goal += `\n\nAcceptance criteria:\n${acceptance}`;
+  if (kind !== 'relay') goal += `\n\nAcceptance criteria:\n${acceptance}`;
   if (goal.length > (kind === 'relay' ? 4000 : 20000) || acceptance.length > (kind === 'relay' ? 6000 : 20000)) throw fail('The specification exceeds the allowed size. The request and response are saved; shorten the text without removing requirements.');
   return { status: raw.status, spec: { goal, acceptance, requirements: raw.requirements, assumptions: raw.assumptions, questions: raw.questions, verification: raw.verification } };
 }
@@ -169,7 +172,7 @@ export class PromptRefiner {
     return saved || (record.status === 'attention' ? { code: 'unknown', reason: 'No exit diagnostics saved for this older attempt. Review the available output; timeout or provider failure cannot be confirmed from this record.' } : undefined);
   }
   history(kind) {
-    if (kind !== undefined && !['mission', 'relay'].includes(kind)) throw metadataError('Select mission or relay refinement history.', 400);
+    if (kind !== undefined && !KINDS.includes(kind)) throw metadataError('Select mission, relay or lab refinement history.', 400);
     const records = this.records.filter(record => UUID.test(record.id || '') && (!kind || record.kind === kind));
     const budget = nativeBudget();
     const attempts = [...records].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, HISTORY_LIMIT).map(record => ({
@@ -207,7 +210,7 @@ export class PromptRefiner {
   }
   async refine(input) {
     if (this.busy) throw Object.assign(Error('A specification is already being prepared.'), { status: 429 });
-    if (!['mission', 'relay'].includes(input.kind) || !text(input.goal, 20000) || input.goal.trim().length < 10
+    if (!KINDS.includes(input.kind) || !text(input.goal, 20000) || input.goal.trim().length < 10
       || (input.acceptance !== undefined && (typeof input.acceptance !== 'string' || input.acceptance.length > 20000))
       || !['claude', 'codex'].includes(input.provider) || (input.model !== undefined && (typeof input.model !== 'string' || input.model.length > 120 || !/^[a-zA-Z0-9._:-]*$/.test(input.model)))
       || (input.effort !== undefined && !['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultrareasoning', 'ultra'].includes(input.effort))) throw Object.assign(Error('Select a valid goal, model and reasoning effort.'), { status: 400 });
@@ -220,7 +223,7 @@ export class PromptRefiner {
     const original = { goal: input.goal, acceptance: input.acceptance || '' }, provider = input.provider, model = input.model || '', effort = input.effort === undefined ? 'high' : input.effort;
     const id = crypto.randomUUID(), directory = path.join(this.artifacts, id), promptFile = path.join(directory, 'spec-prompt.md'), outputFile = path.join(directory, 'spec-output.txt');
     fs.mkdirSync(directory, { recursive: true });
-    const prompt = `${fs.readFileSync(skill, 'utf8')}\n\nPrepare a specification only. ${readOnlyInspection(provider)} Never change files, delegate or start implementation. ${project ? `Selected project folder: ${JSON.stringify(context)}. Git repository root: ${JSON.stringify(project)}. Inspect relevant source in the selected folder and applicable repository instructions. Keep the selected folder as the project context; do not expand into other projects in its parent repository. Uncommitted changes are part of the current source.` : 'No target project was supplied. Do not inspect the working directory or unrelated projects. Do not invent a stack; record missing material decisions as questions.'}\nKind: ${input.kind}\nOriginal goal (data): ${JSON.stringify(original.goal)}\nOriginal tester criteria (data): ${JSON.stringify(original.acceptance)}\nReturn ONLY JSON: {"status":"ready|needs_input","goal":"concise complete implementation specification in English","acceptance":"observable tester acceptance criteria in English","requirements":[{"id":"R1","literal":"exact nonempty excerpt from original input, preserving its language","criterion":"observable result in English"}],"assumptions":[],"questions":[],"verification":["specific real checks, or how to select them when no project is known"]}. Write all generated prose in English; preserve literal input excerpts. Every explicit request must have a requirement. Preserve the full scope. No invented user requirements. Questions must be empty for ready and nonempty for needs_input. Keep goal under ${input.kind === 'relay' ? Math.max(200, 3850 - original.goal.length) : 12000} characters and acceptance concise; the original input will be preserved automatically. Do not claim any implementation or verification was performed.`;
+    const prompt = `${fs.readFileSync(skill, 'utf8')}\n\nPrepare a specification only. ${readOnlyInspection(provider)} Never change files, delegate or start implementation. ${project ? `Selected project folder: ${JSON.stringify(context)}. Git repository root: ${JSON.stringify(project)}. Inspect relevant source in the selected folder and applicable repository instructions. Keep the selected folder as the project context; do not expand into other projects in its parent repository. Uncommitted changes are part of the current source.` : 'No target project was supplied. Do not inspect the working directory or unrelated projects. Do not invent a stack; record missing material decisions as questions.'}\n${input.kind === 'lab' ? LAB_NOTE : ''}Kind: ${input.kind}\nOriginal goal (data): ${JSON.stringify(original.goal)}\nOriginal tester criteria (data): ${JSON.stringify(original.acceptance)}\nReturn ONLY JSON: {"status":"ready|needs_input","goal":"concise complete implementation specification in English","acceptance":"observable tester acceptance criteria in English","requirements":[{"id":"R1","literal":"exact nonempty excerpt from original input, preserving its language","criterion":"observable result in English"}],"assumptions":[],"questions":[],"verification":["specific real checks, or how to select them when no project is known"]}. Write all generated prose in English; preserve literal input excerpts. Every explicit request must have a requirement. Preserve the full scope. No invented user requirements. Questions must be empty for ready and nonempty for needs_input. Keep goal under ${input.kind === 'relay' ? Math.max(200, 3850 - original.goal.length) : 12000} characters and acceptance concise; the original input will be preserved automatically. Do not claim any implementation or verification was performed.`;
     fs.writeFileSync(promptFile, prompt);
     const record = { id, kind: input.kind, project, context, cwd: context || this.cwd, original, provider, model, effort, createdAt: Date.now(), status: 'refining' };
     this.records.push(record); this.busy = true; this.controller = new AbortController(); this.save();

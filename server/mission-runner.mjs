@@ -179,7 +179,7 @@ export function createMissionRunner({spawnImpl = spawn, killTree = stopOwnedTree
     if (signal?.aborted) throw Object.assign(Error('Mission turn canceled'),{name:'AbortError'});
     const args = [aiChatPath,provider,...(sessionHandle?['say',sessionHandle,'@'+prompt]:['new','@'+prompt,directory])];
     const childEnv = {...subscriptionEnvironment(env),AI_MODE:role==='planner'?'plan':'work',
-      AI_NO_AUTOMODE:'1',AI_RELAY_MANAGED:'1',AI_RELAY_MAX_TURNS:role==='planner'?'8':'20',
+      AI_NO_AUTOMODE:'1',AI_RELAY_MANAGED:'1',AI_RELAY_MAX_TURNS:role==='planner'?'24':'60',
       AI_TIMEOUT:String(Math.ceil(timeoutMs/1000))};
     if (role === 'planner') childEnv.AI_RELAY_READ_ONLY = '1';
     if (platform !== 'win32') childEnv.AI_RELAY_OWNED_PROCESS_GROUP = '1';
