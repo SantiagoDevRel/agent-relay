@@ -72,6 +72,7 @@ The Relay installer creates marked shims in `~/.local/bin` and the two Relay ski
 | Missions / request preparation | Implemented with isolated worktrees, scopes, executable checks and persistent budgets. Integration requires both bundled guards and an externally installed TruffleHog executable. Missing scanner blocks commits; no automatic installation. |
 | Ollama summary | Optional, click only; conversation text goes to the configured server. Installed model required. Default endpoint is local. Health uses tags/process APIs without inference. |
 | DGX GPU telemetry | Optional adapter to a user-supplied probe script. No bundled hardware integration or private host. Unconfigured/unavailable telemetry remains unknown. |
+| Relay Evals | Local transcript/Git metrics and a weekly report. Labels use your Codex or Claude CLI login (no API keys); the benchmark spends turns only with `--live`. Data stays in the per-user app-data directory. |
 | GitHub Actions | Read-only `gh` queries with existing login and exact commit evidence. No publishing or workflow creation. |
 | Tailscale Serve | Optional private owner-only HTTPS gate. `--check` is read-only; `--enable` changes local Serve configuration and needs explicit owner authorization. No Funnel or public hosting. |
 | Kimi, Grok and other providers | **Not integrated in Relay.** No worker, collector or login setup is supplied for them. |
@@ -108,6 +109,61 @@ capped by the remaining task and mission deadlines; final checks by the mission
 deadline, and apply checks by its separate 30-minute operation deadline. Session,
 turn and admission budgets stay unchanged. Use meaningful checks from the target
 project; these commands run without a shell and cannot install dependencies.
+
+## Relay Evals
+
+Relay Evals measures how well you orchestrate coding agents (prompts, specs,
+models, effort) from your local Claude Code and Codex transcripts and Git history.
+Nothing runs in the background: run it by hand or schedule one weekly task. The
+**Evals** page reads the newest report only when opened or reloaded.
+
+| Measure | Definition |
+| --- | --- |
+| Corrections | Your follow-up messages that say something was wrong, missing, redone or not what you asked, per 10 messages you sent. A model labels each follow-up with the agent's previous reply as context: Codex (GPT-6.1 Sol, low effort) by default, or Claude (Sonnet 5.5, low effort). Asking to change something just delivered is a correction; questions, status checks, new information and extra work are not. Unlabeled chats fall back to fixed Spanish/English text rules. |
+| Broken "done" | The agent said the work was finished or verified, and your next message reported a failure, wrong data, a missing part or a visible defect. A change of taste is not broken "done". |
+| Verified commits | Commits made after a test, build, lint or typecheck that did not fail earlier in the same turn. |
+| Fixed or reverted within 72 h | A later commit from another chat within three days that reverted the commit, or looks like a fix and touches the same file. |
+| Predictors | Chat traits (spec, effort, prompt length, compaction, provider, model, task type, tool errors) compared within similar chat lengths, with seeded bootstrap 95% intervals and a Holm correction. Only validated predictors appear as a non-blocking note before a mission starts. |
+| Label check | A yes/no CSV sample of the model's labels. The report shows confirmed shares with Wilson intervals, the labeling model (`labeled_by`) and the reviewer (`checked_by`); a model review is labeled as such. |
+| Spec judge | A fixed four-criterion rubric. It stays **not calibrated** until at least 80 of your labels agree with it (weighted kappa ≥ 0.6) and its score predicts fewer problems. |
+| Benchmark | A catalog of past tasks, a frozen reproducible suite (dev/holdout split) and a Relay runner. |
+
+```powershell
+node evals/cli.mjs weekly                    # full report now (--no-notify skips the toast)
+node evals/cli.mjs extract | labels | metrics | catalog | report
+node evals/cli.mjs label-check               # yes/no CSV to check the model's labels
+node evals/cli.mjs judge kit                 # spec labeling kit
+node evals/cli.mjs benchmark freeze | estimate | sample
+node evals/cli.mjs benchmark sample --live   # spends subscription turns
+powershell -ExecutionPolicy Bypass -File evals/schedule-weekly.ps1 install   # optional Sunday 20:00 task
+```
+
+- `weekly`, `report` and `labels` call the labeling model through your existing CLI login.
+  Codex runs headless `codex exec` with a read-only sandbox, ephemeral session, no user
+  config, no subagents, a JSON output schema and no API keys. `--labeler claude` or
+  `RELAY_EVALS_LABELER=claude` uses headless `claude -p` with no tools, MCP servers,
+  hooks, session file or API keys. Labels are cached per message and model. Runs are
+  bounded (4,000 messages, 2 parallel calls, 5 minutes per call, 90 minutes in total,
+  stop after 3 failures). `--no-labels` keeps the text rules only.
+- `benchmark sample --live` is capped at 10 tasks × 2 variants without `--allow-full`.
+  It only takes dev tasks a scratch clone can run unattended: no sending, publishing,
+  deploying, paying or deleting; no outside files or services; a code change and a
+  visible check; not the whole `CHATS_WORKSPACE_ROOT`. The output counts each skip reason.
+- **Ask an agent about this report** opens one interactive Claude (Opus 5.5, default) or
+  Codex (GPT-6.1 Sol) chat per click, with a fixed analysis prompt and read-only access
+  to the report and dataset. Each click counts against the mission admission limits.
+
+| Data | Default location (override) |
+| --- | --- |
+| Private dataset, run log and frozen suites | `%LOCALAPPDATA%\chats-dashboard\evals\` (`RELAY_EVALS_HOME`) |
+| Weekly reports (`report.json`, `report.html`) | `<evals home>\reports\<date>\` (`RELAY_EVALS_REPORTS`) |
+| Labeling kits and label checks | `labeling\` and `label-check\` next to the reports folder |
+| Task contracts (`<folder>/checklist.md` or `requirements.json`) | `~/Downloads/agent-work/` (`RELAY_EVALS_CONTRACTS`) |
+| Optional secret checker (`<script> check <file>`) | none (`RELAY_EVALS_SECRET_CHECK`) |
+
+Provider files are only read. Text is redacted on extraction; a configured secret
+checker scrubs flagged texts again. The dataset and reports contain your prompts:
+keep them private and never commit or publish them.
 
 ## Verification and publication
 

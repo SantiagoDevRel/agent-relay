@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relay-evals/chat-record/1",
+  "title": "Relay Evals chat record (E1 output, one per provider transcript)",
+  "description": "Derived, redacted record of one Claude or Codex chat. Holds only user messages, metadata, classified tool events, tokens and compactions. Never raw tool output, never provider file paths, never unredacted secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "provider", "sessionId", "sourceKey", "cwd", "project", "gitBranch", "startedAt", "endedAt", "entrypoint", "automated", "parentId", "models", "efforts", "userMessages", "turns", "compactions", "tokens", "coverage", "redactions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^(claude|codex):[A-Za-z0-9._-]{1,128}$", "description": "<provider>:<sessionId>" },
+    "provider": { "enum": ["claude", "codex"] },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sourceKey": { "type": "string", "pattern": "^[a-f0-9]{64}$", "description": "sha256 of the provider file path. The path itself lives only in the checkpoints table." },
+    "cwd": { "type": ["string", "null"], "maxLength": 1000, "description": "Working directory when the chat started." },
+    "project": { "type": ["string", "null"], "maxLength": 300, "description": "Display folder from server/places.mjs placeOf(cwd).folder ('' means the workspace root)." },
+    "gitBranch": { "type": ["string", "null"], "maxLength": 300 },
+    "startedAt": { "$ref": "#/$defs/isoOrNull" },
+    "endedAt": { "$ref": "#/$defs/isoOrNull" },
+    "entrypoint": { "type": ["string", "null"], "maxLength": 64, "description": "Claude entrypoint (cli, sdk-cli, ...) or Codex originator/source (codex-tui, exec, ...)." },
+    "automated": { "type": "boolean", "description": "sdk-cli, ai-pack briefs, Codex exec/subagents, Relay managed workers and other non-interactive lanes. Same rule as the dashboard collectors." },
+    "parentId": { "type": ["string", "null"], "maxLength": 140, "description": "Chat id of a known parent/fork source, else null." },
+    "models": { "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/countedValue" } },
+    "efforts": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/countedValue" }, "description": "Observed reasoning effort per turn (Claude effort/perTurnEffort/output_config.effort; Codex reasoning_effort). Empty when never recorded." },
+    "userMessages": { "type": "array", "items": { "$ref": "#/$defs/userMessage" } },
+    "turns": { "type": "array", "items": { "$ref": "#/$defs/turn" } },
+    "compactions": { "type": "array", "items": { "$ref": "#/$defs/compaction" } },
+    "tokens": { "$ref": "#/$defs/tokens" },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "redactions": { "type": "integer", "minimum": 0, "description": "Number of secret-like spans replaced in stored text." }
+  },
+  "$defs": {
+    "isoOrNull": { "type": ["string", "null"], "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" },
+    "iso": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$" },
+    "countedValue": {
+      "type": "object", "additionalProperties": false, "required": ["value", "turns"],
+      "properties": { "value": { "type": "string", "minLength": 1, "maxLength": 80 }, "turns": { "type": "integer", "minimum": 0 } }
+    },
+    "tokens": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input", "cached", "cacheWrite", "output", "reasoning", "total"],
+      "description": "Same accounting as server/usage.mjs tokens(): cache is part of input, reasoning part of output.",
+      "properties": {
+        "input": { "type": "integer", "minimum": 0 }, "cached": { "type": "integer", "minimum": 0 },
+        "cacheWrite": { "type": "integer", "minimum": 0 }, "output": { "type": "integer", "minimum": 0 },
+        "reasoning": { "type": "integer", "minimum": 0 }, "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "userMessage": {
+      "type": "object", "additionalProperties": false, "required": ["turn", "at", "kind", "text", "chars"],
+      "properties": {
+        "turn": { "type": "integer", "minimum": 0, "description": "Index into turns[] that this message opens or interrupts." },
+        "at": { "$ref": "#/$defs/isoOrNull" },
+        "kind": { "enum": ["prompt", "interrupt", "command"], "description": "prompt = typed human text; interrupt = provider interruption marker; command = slash/local command invocation (text is the command name only)." },
+        "text": { "type": "string", "maxLength": 4000, "description": "Redacted text, truncated to 4000 characters. Injected system reminders, AGENTS.md/environment blocks, pasted tool output and tool results are excluded." },
+        "chars": { "type": "integer", "minimum": 0, "description": "Original length in characters before truncation." }
+      }
+    },
+    "shellEvent": {
+      "type": "object", "additionalProperties": false, "required": ["category", "failed"],
+      "properties": {
+        "category": { "enum": ["git-commit", "git-push", "git-revert", "git-reset", "test", "build", "lint", "typecheck", "deploy"] },
+        "failed": { "type": ["boolean", "null"], "description": "true when the tool result is an error or a known failing exit; null when unknown." },
+        "commits": { "type": "array", "maxItems": 20, "items": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" }, "description": "SHAs printed by git commit/revert output." },
+        "cwd": { "type": ["string", "null"], "maxLength": 1000, "description": "Directory the command ran in when known (Codex workdir, explicit cd/-C), else null." }
+      }
+    },
+    "turn": {
+      "type": "object", "additionalProperties": false,
+      "required": ["i", "startedAt", "endedAt", "userChars", "model", "effort", "interrupted", "toolCalls", "toolErrors", "toolCounts", "events", "tokens", "agentFinal"],
+      "properties": {
+        "i": { "type": "integer", "minimum": 0 },
+        "startedAt": { "$ref": "#/$defs/isoOrNull" },
+        "endedAt": { "$ref": "#/$defs/isoOrNull" },
+        "userChars": { "type": "integer", "minimum": 0 },
+        "model": { "type": ["string", "null"], "maxLength": 80 },
+        "effort": { "type": ["string", "null"], "maxLength": 40 },
+        "interrupted": { "type": "boolean" },
+        "toolCalls": { "type": "integer", "minimum": 0 },
+        "toolErrors": { "type": "integer", "minimum": 0 },
+        "toolCounts": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "edit": { "type": "integer", "minimum": 0 }, "read": { "type": "integer", "minimum": 0 }, "shell": { "type": "integer", "minimum": 0 }, "search": { "type": "integer", "minimum": 0 }, "web": { "type": "integer", "minimum": 0 }, "agent": { "type": "integer", "minimum": 0 }, "other": { "type": "integer", "minimum": 0 } }
+        },
+        "events": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/shellEvent" }, "description": "Only classified shell events (commits, pushes, reverts, verification commands, deploys), in order. Raw commands are never stored." },
+        "tokens": { "$ref": "#/$defs/tokens" },
+        "agentFinal": {
+          "type": ["object", "null"], "additionalProperties": false, "required": ["text", "chars"],
+          "description": "Last assistant text of the turn, redacted and truncated, used for closure-claim detection.",
+          "properties": { "text": { "type": "string", "maxLength": 600 }, "chars": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    },
+    "compaction": {
+      "type": "object", "additionalProperties": false, "required": ["at", "trigger", "turn"],
+      "properties": { "at": { "$ref": "#/$defs/isoOrNull" }, "trigger": { "enum": ["auto", "manual", "unknown"] }, "turn": { "type": "integer", "minimum": 0 } }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false, "required": ["complete", "bytes", "lines", "skippedLines", "oversizedLines", "unknownEvents"],
+      "properties": {
+        "complete": { "type": "boolean", "description": "false when any line was skipped, oversized or unparseable." },
+        "bytes": { "type": "integer", "minimum": 0 }, "lines": { "type": "integer", "minimum": 0 },
+        "skippedLines": { "type": "integer", "minimum": 0 }, "oversizedLines": { "type": "integer", "minimum": 0 },
+        "unknownEvents": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

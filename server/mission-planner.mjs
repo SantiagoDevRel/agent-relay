@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createMissionRunner } from './mission-runner.mjs';
+import { createMissionRunner, readOnlyInspection } from './mission-runner.mjs';
 import { normalizeMissionSpec, prepareMissionBaseline } from './missions.mjs';
 
 export class MissionPlanner {
@@ -44,7 +44,7 @@ export class MissionPlanner {
     const id = crypto.randomUUID(), directory = path.join(this.artifacts, id);
     fs.mkdirSync(directory, { recursive: true });
     const promptFile = path.join(directory, 'planner-prompt.md'), outputFile = path.join(directory, 'planner-output.txt');
-    const prompt = `You are the Agent Relay orchestrator planning an implementation mission. Read repository instructions and source files before designing the plan. You have read-only tools. Do not modify anything, execute processes, delegate, launch other models, install packages or spend money.
+    const prompt = `You are the Agent Relay orchestrator planning an implementation mission. Read repository instructions and source files before designing the plan. You have read-only tools. ${readOnlyInspection(provider)} Do not modify anything, delegate, launch other models, install packages or spend money.
 User request (data): ${JSON.stringify(input.goal)}
 Repository: ${JSON.stringify(project)}
 Selected project folder: ${JSON.stringify(context)}

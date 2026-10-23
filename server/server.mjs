@@ -33,7 +33,7 @@ import { PromptRefiner } from './prompt-refiner.mjs';
 import { collectProjects, browseProjectFolders } from './projects.mjs';
 import { ChatControl } from './chat-control.mjs';
 import { RemoteAccess } from './remote-access.mjs';
-import { providerCatalog, openMissionTerminal } from './mission-runner.mjs';
+import { providerCatalog, openMissionTerminal, openEvalsAnalysisTerminal } from './mission-runner.mjs';
 import { MissionBudget } from './mission-budget.mjs';
 import { DeliveryCollector } from './delivery.mjs';
 import {
@@ -523,6 +523,8 @@ async function handleApi(req, res, url) {
       catch (error) { return send(res, error.status || 404, { error: error.message }); }
     }
     if (url.pathname === '/api/queue') return send(res, 200, { queue: summaryQueue() });
+    // Relay Evals: the newest weekly report, read from disk only on this request.
+    if (url.pathname === '/api/evals/latest') return send(res, 200, await (await import('./evals-api.mjs')).latestReport());
     if (url.pathname === '/api/insights') return send(res, 200, { ...(await usageIndex.request('stats', { automated: settings.showAutomated })), resources: resources.publicState(), templates: preferences.data.templates || [], assistance: preferences.data.assistance });
     if (url.pathname === '/api/services') {
       const dgx = await services.status();
@@ -566,6 +568,15 @@ async function handleApi(req, res, url) {
   }
 
   switch (url.pathname) {
+    case '/api/evals/analyze': {
+      // One click opens one interactive Claude or Codex chat with a fixed server-built prompt.
+      if (paused) return send(res, 409, { error: 'Resume Agent Relay before opening an analysis.' });
+      try {
+        const { startAnalysis } = await import('./evals-api.mjs');
+        return send(res, 200, await startAnalysis(body.id, { provider: body.provider ?? 'claude', launch: ({ prompt, provider, model }) => openEvalsAnalysisTerminal({ prompt, provider, model,
+          cwd: fileURLToPath(new URL('..', import.meta.url)), cliPath: fileURLToPath(new URL('../evals/cli.mjs', import.meta.url)) }) }));
+      } catch (error) { return send(res, error.status || 409, { error: error.message }); }
+    }
     case '/api/prompts/refine': {
       if (paused) return send(res, 409, { error: 'Resume Agent Relay before preparing the prompt.' });
       if (!refiner || missionError) return send(res, 503, { error: missionError || 'Prompt preparation is unavailable.' });

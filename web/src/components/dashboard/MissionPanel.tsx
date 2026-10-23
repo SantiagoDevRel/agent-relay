@@ -7,6 +7,7 @@ import { Button, Segmented } from './Controls';
 import { ModelSelector, modelSelectionReady } from './ModelSelector';
 import { ProjectSelector } from './ProjectSelector';
 import { PromptRefinement } from './PromptRefinement';
+import { EvalsLaunchAdvisory } from './EvalsPanel';
 
 const DEFAULT_LIMITS: MissionLimits = { concurrency: 3, maxSessions: 16, maxTurns: 24, taskMinutes: 60, missionMinutes: 720 };
 const CLOSED = new Set<MissionStatus>(['stopped', 'expired', 'applied']);
@@ -245,7 +246,7 @@ export function MissionPanel({ snapshot, connected, onNotify, page = false, acti
         </fieldset></form> : <div className="relay-fields"><label>Mission contract<textarea className="mission-contract" rows={12} maxLength={200000} value={contract} disabled={Boolean(busy) || planning || unavailable} onChange={event => setContract(event.target.value)} placeholder="Paste a contract with project, title, goal, provider, limits, tasks, and checks. Each check is an argument list, for example: [&#34;npm.cmd&#34;, &#34;test&#34;]." /></label><p className="dialog-note">Each task defines id, title, prompt, dependsOn, files, and checks. Scoped folders end in /. The server validates limits, paths, and dependencies before creating agents.</p></div>}
         {contract && mode === 'goal' ? <details className="mission-evidence"><summary>Edit JSON contract</summary><label className="assistant-field">Generated contract<textarea className="mission-contract" rows={12} maxLength={200000} value={contract} disabled={Boolean(busy) || planning || unavailable} onChange={event => setContract(event.target.value)} /></label></details> : null}
         {contract ? <div className="mission-plan" aria-label="Plan for the mission">
-          {parsed.error ? <p className="assistant-warning" role="alert">{parsed.error}</p> : parsed.spec ? <><h3>{parsed.spec.title} · {parsed.spec.tasks.length} tasks</h3><p className="mission-path">{parsed.spec.project}</p><ol className="mission-plan-tasks">{parsed.spec.tasks.map(task => <li key={task.id}><h4>{task.title}</h4><TaskScope task={task} titles={specTitles} /></li>)}</ol><Button className="mission-primary" disabled={Boolean(busy) || planning || unavailable || snapshot.paused} onClick={start}><Play size={15} />{busy === 'creating' ? 'Starting…' : 'Create and start mission'}</Button></> : null}
+          {parsed.error ? <p className="assistant-warning" role="alert">{parsed.error}</p> : parsed.spec ? <><h3>{parsed.spec.title} · {parsed.spec.tasks.length} tasks</h3><p className="mission-path">{parsed.spec.project}</p><ol className="mission-plan-tasks">{parsed.spec.tasks.map(task => <li key={task.id}><h4>{task.title}</h4><TaskScope task={task} titles={specTitles} /></li>)}</ol><EvalsLaunchAdvisory /><Button className="mission-primary" disabled={Boolean(busy) || planning || unavailable || snapshot.paused} onClick={start}><Play size={15} />{busy === 'creating' ? 'Starting…' : 'Create and start mission'}</Button></> : null}
         </div> : null}
       </details>
       {!jobs.length ? <p className="dialog-note">No missions yet. Prepare your first plan to see the orchestrator and its connected agents.</p> : null}

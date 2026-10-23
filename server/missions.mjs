@@ -367,6 +367,8 @@ export class MissionManager{
  }
  async commitCandidate(m,t,controller){
   const files=await this.changed(t);if(!files.length)return;
+  // A rejected earlier attempt may have left files staged that the retry deleted; restage from the base.
+  await this.git(t.worktree,['reset','-q','--mixed',t.baseHead],{signal:controller.signal});
   await this.git(t.worktree,['add','--',...files],{signal:controller.signal});
   const approvedTree=(await this.git(t.worktree,['write-tree'])).trim();await this.runGates(t,controller.signal);this.assertDeadline(m,t);await this.changed(t);
   if((await this.git(t.worktree,['write-tree'])).trim()!==approvedTree||(await this.git(t.worktree,['diff','--name-only','--'])).trim())throw fail('A guard modified files after verification. No commit was created.','gate-mutated',409);

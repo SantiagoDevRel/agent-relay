@@ -376,3 +376,19 @@ test('apply has a bounded whole-operation deadline and kills its owned check des
   const resultPromise=f.manager.apply(m.id).then(value=>({value}),error=>({error}));await until(()=>{const match=f.manager.log(m.id,'integration').match(/^\{"ownedApplyChild":(\d+)\}/m);if(match)childPid=Number(match[1]);return !!childPid;},'owned apply check starts');const result=await resultPromise;assert.equal(result.error?.code,'apply-timeout');assert.throws(()=>process.kill(childPid,0));assert.equal(git(f.project,['rev-parse','HEAD']),original);assert.equal(f.manager.publicState()[0].status,'ready');assert.equal(f.calls.length,1);
  }finally{await f.cleanup();if(childPid)try{process.kill(childPid,'SIGKILL');}catch{/* only the test-owned child */}}
 });
+
+test('a file deleted after a gate rejection never reaches the retried commit',async()=>{
+ let gateCalls=0;
+ const f=await fixture(async(arg,call)=>{
+  fs.writeFileSync(path.join(arg.cwd,'a.txt'),'verified\n');
+  if(call===1)fs.writeFileSync(path.join(arg.cwd,'a-temp.txt'),'rejected scratch\n');else fs.rmSync(path.join(arg.cwd,'a-temp.txt'),{force:true});
+  return success();
+ },{gate:async()=>{if(++gateCalls===1)throw new Error('blocked temporary artifact');}});try{
+  const m=await f.manager.create(f.spec([task('a',{files:['a.txt','a-temp.txt']})]));await f.manager.start(m.id);
+  await until(()=>f.manager.publicState()[0].status==='attention','gate rejection');
+  await f.manager.message(m.id,'a','Remove the temporary file.');await f.manager.retry(m.id,'a');await ready(f,m.id);
+  const t=f.manager.jobs[0].tasks[0];
+  assert.deepEqual(git(t.worktree,['show','--name-only','--format=',t.commit]).split('\n'),['a.txt']);
+  assert.equal(git(t.worktree,['status','--porcelain=v1','--untracked-files=all']),'');
+ }finally{await f.cleanup();}
+});

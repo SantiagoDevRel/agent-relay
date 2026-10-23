@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, CircleOff, Download, ExternalLink, Folder, GitPullRequestArrow, Layers, MessageSquare, Network, Pause, Play, Power, RefreshCw, Search, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, CircleCheck, CircleOff, Cpu, Download, ExternalLink, Folder, Gauge, GitPullRequestArrow, Layers, MessageSquare, Network, Pause, Play, Power, RefreshCw, Search, X } from 'lucide-react';
 import { useSnapshot, sendControl, setWindowDays, setShowAutomated, openWindowsUpdate } from '@/lib/api';
 import { TargetContext, type Target } from '@/lib/attention';
 import { installApp, useCanInstall } from '@/lib/install';
@@ -16,19 +16,23 @@ import { HistoryPanel } from './HistoryPanel';
 import { InsightsPanel } from './InsightsPanel';
 import { RelayPanel } from './RelayPanel';
 import { MissionPanel } from './MissionPanel';
+import { EvalsPanel } from './EvalsPanel';
+import { DgxPanel } from './DgxPanel';
 
 const STALE_MS = 30_000;
 const TARGET_MS = 2600;
 const TOAST_MS = { info: 6000, error: 10_000 };
 // Registered by setup-windows.ps1: starts the server without opening another window.
 const POWER_ON_URL = 'chats-dashboard:start';
-type Page = 'projects' | 'chats' | 'delivery' | 'orchestrator' | 'missions';
+type Page = 'projects' | 'chats' | 'delivery' | 'orchestrator' | 'missions' | 'evals' | 'dgx';
 const PAGES = [
   { id: 'projects', label: 'Projects', Icon: Folder },
   { id: 'chats', label: 'Chats', Icon: MessageSquare },
   { id: 'delivery', label: 'Delivery', Icon: GitPullRequestArrow },
   { id: 'orchestrator', label: 'Orchestrator', Icon: GitPullRequestArrow },
   { id: 'missions', label: 'Missions', Icon: Network },
+  { id: 'evals', label: 'Evals', Icon: Gauge },
+  { id: 'dgx', label: 'DGX', Icon: Cpu },
 ] satisfies { id: Page; label: string; Icon: typeof Folder }[];
 const pageFromHash = (): Page => PAGES.find(item => location.hash === `#${item.id}`)?.id ?? (location.hash.startsWith('#chat-') ? 'chats' : 'projects');
 
@@ -86,21 +90,26 @@ export function Dashboard() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [tabScroll, setTabScroll] = useState({ overflow: false, left: false, right: false });
-  useEffect(() => {
-    const tabs = tabsRef.current;
-    if (!tabs) return;
-    const measure = () => setTabScroll({ overflow: tabs.scrollWidth > tabs.clientWidth + 1, left: tabs.scrollLeft > 1, right: tabs.scrollLeft + tabs.clientWidth < tabs.scrollWidth - 1 });
-    const observer = new ResizeObserver(measure);
-    observer.observe(tabs); tabs.addEventListener('scroll', measure, { passive: true }); measure();
-    return () => { observer.disconnect(); tabs.removeEventListener('scroll', measure); };
-  }, [connection === 'off']);
-  useEffect(() => {
-    const tabs = tabsRef.current, tab = document.getElementById(`tab-${page}`);
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const revealSelectedTab = () => {
+    const tabs = tabsRef.current, tab = document.getElementById(`tab-${pageRef.current}`);
     if (!tabs || !tab) return;
     const container = tabs.getBoundingClientRect(), selected = tab.getBoundingClientRect();
     if (selected.left < container.left) tabs.scrollLeft += selected.left - container.left - 4;
     else if (selected.right > container.right) tabs.scrollLeft += selected.right - container.right + 4;
-  }, [page]);
+  };
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    if (!tabs) return;
+    const measure = () => setTabScroll({ overflow: tabs.scrollWidth > tabs.clientWidth + 1, left: tabs.scrollLeft > 1, right: tabs.scrollLeft + tabs.clientWidth < tabs.scrollWidth - 1 });
+    // A resize (scroll arrows appearing, a page scrollbar, a narrower window) keeps the selected tab visible.
+    const observer = new ResizeObserver(() => { revealSelectedTab(); measure(); });
+    observer.observe(tabs); tabs.addEventListener('scroll', measure, { passive: true }); measure();
+    document.fonts?.ready.then(revealSelectedTab);
+    return () => { observer.disconnect(); tabs.removeEventListener('scroll', measure); };
+  }, [connection === 'off']);
+  useEffect(revealSelectedTab, [page]);
   const hashHandled = useRef('');
   const [target, setTarget] = useState<Target>(null);
   const targetSeq = useRef(0);
@@ -209,7 +218,7 @@ export function Dashboard() {
             </section>
             <section id="page-chats" className="dashboard-page chats-page" role="tabpanel" aria-labelledby="tab-chats" hidden={page !== 'chats'}>
             <AttentionPanel chats={chats} now={snapshot.generatedAt} onSelect={select} />
-            <ServicesBar snapshot={snapshot} favorites={favorites} onFavorites={() => setFavorites(!favorites)} onHistory={() => setHistoryOpen(!historyOpen)} onNotify={notify} />
+            <ServicesBar snapshot={snapshot} favorites={favorites} onFavorites={() => setFavorites(!favorites)} onHistory={() => setHistoryOpen(!historyOpen)} onDgx={() => navigate('dgx')} onNotify={notify} />
             <InsightsPanel snapshot={snapshot} onNotify={notify} />
             {historyOpen && <HistoryPanel automated={snapshot.showAutomated} onClose={() => setHistoryOpen(false)} onSelect={select} onNotify={notify} />}
             <div className="toolbar">
@@ -223,6 +232,8 @@ export function Dashboard() {
             <section id="page-delivery" className="dashboard-page" role="tabpanel" aria-labelledby="tab-delivery" hidden={page !== 'delivery'}><div className="panel"><DeliveryTable chats={chats} onSelect={select} /></div></section>
             <section id="page-orchestrator" className="dashboard-page" role="tabpanel" aria-labelledby="tab-orchestrator" hidden={page !== 'orchestrator'}><RelayPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'orchestrator'} /></section>
             <section id="page-missions" className="dashboard-page" role="tabpanel" aria-labelledby="tab-missions" hidden={page !== 'missions'}><MissionPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'missions'} /></section>
+            <section id="page-evals" className="dashboard-page" role="tabpanel" aria-labelledby="tab-evals" hidden={page !== 'evals'}><EvalsPanel active={page === 'evals'} /></section>
+            <section id="page-dgx" className="dashboard-page" role="tabpanel" aria-labelledby="tab-dgx" hidden={page !== 'dgx'}><DgxPanel active={page === 'dgx'} /></section>
           </> : connection === 'disconnected' ? <div className="empty-state" role="alert">
             <span className="empty-glyph"><AlertTriangle size={28} /></span>
             <h2>Server disconnected</h2>

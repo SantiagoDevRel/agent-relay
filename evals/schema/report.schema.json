@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relay-evals/report/1",
+  "title": "Relay Evals weekly report (E6 output; read by the Evals page E7)",
+  "description": "Aggregates and short redacted examples only. No transcripts, no provider paths, no secrets. Every number that lacks data says so through status/insufficient fields instead of a misleading value.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "period", "previousPeriod", "coverage", "summary", "kpis", "experiment", "predictors", "corrections", "models", "benchmark", "judge", "methodology", "missing"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string" },
+    "period": { "$ref": "#/$defs/period" },
+    "previousPeriod": { "$ref": "#/$defs/period" },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["chatsTotal", "chatsInteractive", "chatsInPeriod", "filesScanned", "filesPartial", "firstChatAt", "lastChatAt"],
+      "properties": {
+        "chatsTotal": { "type": "integer", "minimum": 0 }, "chatsInteractive": { "type": "integer", "minimum": 0 },
+        "chatsInPeriod": { "type": "integer", "minimum": 0 }, "filesScanned": { "type": "integer", "minimum": 0 },
+        "filesPartial": { "type": "integer", "minimum": 0 },
+        "firstChatAt": { "type": ["string", "null"] }, "lastChatAt": { "type": ["string", "null"] }
+      }
+    },
+    "summary": { "type": "array", "minItems": 3, "maxItems": 5, "items": { "type": "string", "minLength": 10, "maxLength": 300 }, "description": "3-5 plain-English sentences: how the week went, what improved, what got worse, what to do." },
+    "kpis": { "type": "array", "minItems": 3, "maxItems": 4, "items": { "$ref": "#/$defs/kpi" } },
+    "experiment": {
+      "type": "object", "additionalProperties": false, "required": ["title", "action", "why", "measure"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 }, "action": { "type": "string", "maxLength": 300, "description": "One concrete action for next week." },
+        "why": { "type": "string", "maxLength": 300 }, "measure": { "type": "string", "maxLength": 200 }
+      }
+    },
+    "predictors": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/predictor" }, "description": "Factors ranked by how strongly they predict problems; the page shows the top 3." },
+    "corrections": {
+      "type": "object", "additionalProperties": false, "required": ["total", "byCategory", "examples"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "byCategory": { "type": "array", "maxItems": 8, "items": { "type": "object", "additionalProperties": false, "required": ["category", "label", "count", "previous"],
+          "properties": { "category": { "type": "string", "maxLength": 40 }, "label": { "type": "string", "maxLength": 80 }, "count": { "type": "integer", "minimum": 0 }, "previous": { "type": "integer", "minimum": 0 } } } },
+        "examples": { "type": "array", "maxItems": 12, "items": { "type": "object", "additionalProperties": false, "required": ["category", "text"],
+          "properties": { "category": { "type": "string", "maxLength": 40 }, "text": { "type": "string", "maxLength": 160 } } } }
+      }
+    },
+    "models": {
+      "type": "object", "additionalProperties": false, "required": ["scope", "rows"],
+      "description": "E4b retrospective benchmark table over 100% of history.",
+      "properties": {
+        "scope": { "type": "string", "maxLength": 120 },
+        "rows": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/modelRow" } }
+      }
+    },
+    "benchmark": {
+      "type": "object", "additionalProperties": false, "required": ["catalogTasks", "excludedTasks", "reproducibleTasks", "holdoutTasks", "estimate", "runs"],
+      "properties": {
+        "catalogTasks": { "type": "integer", "minimum": 0 }, "excludedTasks": { "type": "integer", "minimum": 0 },
+        "reproducibleTasks": { "type": "integer", "minimum": 0 }, "holdoutTasks": { "type": "integer", "minimum": 0 },
+        "estimate": { "type": ["object", "null"], "additionalProperties": false, "required": ["turns", "days", "turnsPerDay"],
+          "properties": { "turns": { "type": "integer", "minimum": 0 }, "days": { "type": "number", "minimum": 0 }, "turnsPerDay": { "type": "integer", "minimum": 1 } } },
+        "runs": { "type": "array", "maxItems": 100, "items": { "type": "object", "additionalProperties": false, "required": ["variant", "tasks", "passedFirstTry", "medianTurns", "medianMinutes", "medianTokens", "interventions"],
+          "properties": { "variant": { "type": "string", "maxLength": 120 }, "tasks": { "type": "integer", "minimum": 0 }, "passedFirstTry": { "type": "integer", "minimum": 0 },
+            "medianTurns": { "type": ["number", "null"] }, "medianMinutes": { "type": ["number", "null"] }, "medianTokens": { "type": ["number", "null"] }, "interventions": { "type": "integer", "minimum": 0 } } } }
+      }
+    },
+    "judge": {
+      "type": "object", "additionalProperties": false, "required": ["status", "labeled", "kappa", "correlation", "note"],
+      "properties": {
+        "status": { "enum": ["not-calibrated", "calibrated"] },
+        "labeled": { "type": "integer", "minimum": 0 },
+        "kappa": { "type": ["number", "null"] },
+        "correlation": { "type": ["object", "null"], "additionalProperties": false, "required": ["r", "ci95", "n", "outcome"],
+          "properties": { "r": { "type": "number" }, "ci95": { "$ref": "#/$defs/ci" }, "n": { "type": "integer", "minimum": 0 }, "outcome": { "type": "string", "maxLength": 80 } } },
+        "note": { "type": "string", "maxLength": 300 }
+      }
+    },
+    "labels": {
+      "type": "object", "additionalProperties": false, "required": ["model", "claudeChats", "ruleChats", "check"],
+      "description": "Who labeled corrections and broken done: the named model (Codex or Claude; the field name predates Codex labels) for claudeChats interactive chats, the deterministic rules for ruleChats. check = the yes/no answers to the newest label check, or null.",
+      "properties": {
+        "model": { "type": ["string", "null"], "maxLength": 80 },
+        "claudeChats": { "type": "integer", "minimum": 0 },
+        "ruleChats": { "type": "integer", "minimum": 0 },
+        "check": { "type": ["object", "null"], "additionalProperties": false, "required": ["total", "answered", "kinds"],
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 }, "answered": { "type": "integer", "minimum": 0 },
+            "checkedBy": { "type": "array", "maxItems": 3, "items": { "type": "string", "maxLength": 60 }, "description": "Who answered: the owner or a named model; a model review is not a human check." },
+            "labeledBy": { "type": "array", "maxItems": 3, "items": { "type": "string", "maxLength": 60 }, "description": "Models whose labels the check sampled." },
+            "kinds": { "type": "array", "maxItems": 3, "items": { "type": "object", "additionalProperties": false, "required": ["kind", "label", "total", "answered", "confirmed", "rate", "ci95"],
+              "properties": { "kind": { "enum": ["correction", "broken-done", "not-correction"] }, "label": { "type": "string", "maxLength": 60 },
+                "total": { "type": "integer", "minimum": 0 }, "answered": { "type": "integer", "minimum": 0 }, "confirmed": { "type": "integer", "minimum": 0 },
+                "rate": { "type": ["number", "null"] }, "ci95": { "oneOf": [{ "$ref": "#/$defs/ci" }, { "type": "null" }] } } } }
+          } }
+      }
+    },
+    "methodology": { "type": "array", "maxItems": 20, "items": { "type": "object", "additionalProperties": false, "required": ["term", "explanation"],
+      "properties": { "term": { "type": "string", "maxLength": 80 }, "explanation": { "type": "string", "maxLength": 500 } } } },
+    "missing": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 }, "description": "Parts that could not be produced this run (e.g. DGX model pass unavailable)." },
+    "run": { "type": "object", "additionalProperties": false, "required": ["durationMs", "peakRssBytes"],
+      "properties": { "durationMs": { "type": "integer", "minimum": 0 }, "peakRssBytes": { "type": "integer", "minimum": 0 }, "trigger": { "enum": ["weekly", "manual"] } } }
+  },
+  "$defs": {
+    "period": { "type": "object", "additionalProperties": false, "required": ["start", "end", "label"],
+      "properties": { "start": { "type": "string" }, "end": { "type": "string" }, "label": { "type": "string", "maxLength": 60 } } },
+    "ci": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } },
+    "kpi": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label", "value", "previous", "unit", "goodDirection", "trend", "meaning", "n", "insufficient"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9-]{2,40}$" },
+        "label": { "type": "string", "maxLength": 60 },
+        "value": { "type": ["number", "null"] }, "previous": { "type": ["number", "null"] },
+        "unit": { "enum": ["percent", "count", "turns", "per10"] },
+        "goodDirection": { "enum": ["up", "down"] },
+        "trend": { "enum": ["better", "worse", "same", "unknown"] },
+        "meaning": { "type": "string", "maxLength": 200, "description": "One plain line saying what this number means." },
+        "n": { "type": "integer", "minimum": 0 },
+        "insufficient": { "type": "boolean", "description": "true when n < 10: the page shows 'not enough data yet' instead of the value." }
+      }
+    },
+    "predictor": {
+      "type": "object", "additionalProperties": false, "required": ["factor", "label", "outcome", "effect", "ci95", "nWith", "nWithout", "status", "validated"],
+      "properties": {
+        "factor": { "type": "string", "maxLength": 60 }, "label": { "type": "string", "maxLength": 120 },
+        "outcome": { "type": "string", "maxLength": 80, "description": "Problem measured, e.g. 'chat had a correction or false done'." },
+        "effect": { "type": ["number", "null"], "description": "Problem rate with the factor minus without, in percentage points." },
+        "ci95": { "oneOf": [{ "$ref": "#/$defs/ci" }, { "type": "null" }], "description": "Bootstrap 95% interval of the effect." },
+        "nWith": { "type": "integer", "minimum": 0 }, "nWithout": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["ok", "insufficient"], "description": "insufficient when either group has n < 10; then effect and ci95 are null." },
+        "validated": { "type": "boolean", "description": "ok status and the CI excludes zero. Only validated predictors may surface in the mission launch warning." }
+      }
+    },
+    "modelRow": {
+      "type": "object", "additionalProperties": false, "required": ["dimension", "value", "chats", "correctionRate", "falseDoneRate", "fixRevertRate", "medianTurnsToVerifiedCommit", "insufficient"],
+      "properties": {
+        "dimension": { "enum": ["model", "effort", "spec", "taskType", "project", "provider"] },
+        "value": { "type": "string", "maxLength": 120 },
+        "chats": { "type": "integer", "minimum": 0 },
+        "correctionRate": { "type": ["number", "null"], "description": "Corrections per 10 human prompts." },
+        "falseDoneRate": { "type": ["number", "null"], "description": "Share of done claims later reported broken (0-1)." },
+        "fixRevertRate": { "type": ["number", "null"], "description": "Share of checked commits fixed or reverted within 72 h (0-1)." },
+        "medianTurnsToVerifiedCommit": { "type": ["number", "null"] },
+        "insufficient": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
-import {createMissionRunner,subscriptionEnvironment,providerCatalog,openMissionTerminal,openOrchestratorTerminal,nativeLaunchDirectory,NATIVE_LAUNCH_LIMIT} from '../server/mission-runner.mjs';
+import {createMissionRunner,subscriptionEnvironment,providerCatalog,openMissionTerminal,openOrchestratorTerminal,openEvalsAnalysisTerminal,EVALS_WINDOW,createOrchestratorCommand,nativeLaunchDirectory,NATIVE_LAUNCH_LIMIT} from '../server/mission-runner.mjs';
 import {runOrchestratorTerminal} from '../server/orchestrator-terminal.mjs';
 
 const exec = promisify(execFile), id = 'bbbbbbbb-bbbb-bbbb-bbbb-000000000001';
@@ -199,6 +199,39 @@ test('mission terminals target one named window with safe argv and never launch 
     assert.equal(nativeCalls[0].options.env.OPENAI_API_KEY,undefined);assert.equal(nativeCalls[0].options.env.ANTHROPIC_API_KEY,undefined);
     assert.equal(nativeCalls[0].options.env.CLAUDE_CODE_DISABLE_WORKFLOWS,'1');
     assert.deepEqual(budget.calls,[{role:'orchestrator'}]);assert.equal(budget.state.released,1);
+  } finally {f.cleanup();}
+});
+
+test('Evals analyses open one guarded Claude chat in the evals window and reject foreign prompts',async()=>{
+  const f=fixture(),calls=[],budget=budgetFixture();
+  const spawnImpl=(command,args,options)=>{calls.push({command,args,options});const child=fakeChild();queueMicrotask(()=>child.emit('spawn'));return child;};
+  try {
+    fs.mkdirSync(path.join(f.home,'.local/bin'),{recursive:true});fs.writeFileSync(path.join(f.home,'.local/bin/claude.exe'),'--max-turns <turns>');
+    const prompt='# Relay Evals · Broken “done” claims\n<!-- agent-relay-evals-analysis:v1 -->\nRead only; "quoted" text.\n';
+    await openEvalsAnalysisTerminal({prompt,cwd:f.cwd,cliPath:f.cliPath,port:4939},{spawnImpl,budget,home:f.home});
+    assert.equal(calls.length,1);assert.deepEqual(calls[0].args.slice(0,6),['-w',EVALS_WINDOW,'new-tab','--inheritEnvironment','--title','Relay Evals · Broken “done” claims']);
+    assert.ok(!calls[0].args.join(' ').includes('agent-relay-evals-analysis'),'prompt text never passes through wt.exe');
+    assert.deepEqual(budget.calls,[{role:'analysis'}]);assert.equal(budget.state.released,1);
+    const launchArgument=calls[0].args.at(-1),config=JSON.parse(fs.readFileSync(launchArgument.slice(1),'utf8'));
+    assert.equal(config.provider,'claude');assert.equal(config.model,'');assert.equal(config.effort,'high');assert.equal(config.windowName,EVALS_WINDOW);
+    const nativeCalls=[];
+    await runOrchestratorTerminal(launchArgument,{home:f.home,env:{},spawnImpl:(command,args,options)=>{nativeCalls.push({command,args,options});const child=fakeChild();queueMicrotask(()=>child.finish());return child;}});
+    assert.equal(nativeCalls[0].args[nativeCalls[0].args.indexOf('--name')+1],'Relay Evals · Broken “done” claims');
+    assert.equal(nativeCalls[0].args[nativeCalls[0].args.indexOf('--disallowedTools')+1],'Agent,Task,Workflow');assert.equal(nativeCalls[0].args.at(-1),prompt);
+    // Only the fixed header is accepted, only for Claude, and without terminal-unsafe label characters.
+    assert.throws(()=>openEvalsAnalysisTerminal({prompt:'# Something else\n',cwd:f.cwd,cliPath:f.cliPath},{spawnImpl,budget,home:f.home}),/Invalid Relay Evals/);
+    assert.throws(()=>openEvalsAnalysisTerminal({prompt:'# Relay Evals · a;b\n<!-- agent-relay-evals-analysis:v1 -->\n',cwd:f.cwd,cliPath:f.cliPath},{spawnImpl,budget,home:f.home}),/Invalid Relay Evals/);
+    assert.equal(calls.length,1);
+    // Codex can answer an analysis too: same header, the chosen model and the prompt as the last argument.
+    fs.mkdirSync(path.join(f.home,'npm/node_modules/@openai/codex/bin'),{recursive:true});
+    fs.writeFileSync(path.join(f.home,'npm/node_modules/@openai/codex/bin/codex.js'),'// fake installed CLI');
+    const codex=createOrchestratorCommand({...config,provider:'codex',model:'gpt-6.1-sol',effort:'high'},{home:f.home,env:{APPDATA:f.home}});
+    assert.equal(codex.command,process.execPath);assert.equal(codex.args[codex.args.indexOf('-m')+1],'gpt-6.1-sol');
+    assert.equal(codex.args[codex.args.indexOf('--disable')+1],'multi_agent');assert.equal(codex.args.at(-1),prompt);
+    await openEvalsAnalysisTerminal({prompt,provider:'codex',model:'gpt-6.1-sol',cwd:f.cwd,cliPath:f.cliPath,port:4939},{spawnImpl,budget,home:f.home,env:{APPDATA:f.home}});
+    const codexConfig=JSON.parse(fs.readFileSync(calls[1].args.at(-1).slice(1),'utf8'));
+    assert.deepEqual([codexConfig.provider,codexConfig.model,codexConfig.effort],['codex','gpt-6.1-sol','high']);
+    assert.throws(()=>createOrchestratorCommand({...config,provider:'codex',model:'gpt-6.1-sol',effort:'high',prompt:'# Relay Evals · x\n'},{home:f.home,env:{APPDATA:f.home}}),/Invalid native orchestrator prompt/);
   } finally {f.cleanup();}
 });
 

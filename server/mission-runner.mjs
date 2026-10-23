@@ -279,7 +279,7 @@ export function createMissionRunner({spawnImpl = spawn, killTree = stopOwnedTree
   };
 }
 
-function providerBins(home = os.homedir(), env = process.env) {
+export function providerBins(home = os.homedir(), env = process.env) {
   const codexCandidates = [path.join(path.dirname(process.execPath),'node_modules/@openai/codex/bin/codex.js'),
     path.join(env.APPDATA || home,'npm/node_modules/@openai/codex/bin/codex.js')];
   return {claude:path.join(home,'.local/bin/claude.exe'),codex:codexCandidates.find(file=>fs.existsSync(file)) || null};
@@ -348,6 +348,13 @@ export async function providerCatalog({home = os.homedir(),env = process.env,exe
     subscriptionTokens:'Provider subscription token quotas cannot be enforced as exact billing limits by this runner.'}};
 }
 
+/** Read-only turns get Read/Glob/Grep on Claude; Codex reads only through its read-only sandbox shell. */
+export function readOnlyInspection(provider) {
+  return provider === 'codex'
+    ? 'Your only file-reading tool is the shell inside the read-only sandbox: use it only for read-only inspection commands such as rg, ls, Get-Content, cat, git status, git diff, git log and git show. Never run builds, tests, package managers, project scripts, network commands or commands that write.'
+    : 'Use only the read-only file tools; never execute processes.';
+}
+
 async function launchTerminal(args,{spawnImpl = spawn,env = process.env} = {}) {
   // Windows Terminal interprets semicolons itself, even without a shell.
   if (args.some(value=>typeof value !== 'string' || /[;\r\n]/.test(value))) throw Error('Unsafe Windows Terminal argument');
@@ -388,16 +395,31 @@ export function openOrchestratorTerminal({provider,model,effort,cwd,cliPath,wind
     JSON.stringify({terminalWindow:windowName,terminalViews:true})+'. '+
     'Pass this exact contract in mission JSON even if environment variables are missing. Use that named window for child chat views; do not silently create another orchestration tree.';
   const config = {schema:1,provider,model:model || '',effort:effort || '',cwd,cliPath:cli,windowName,port:relayPort,prompt};
+  return launchNative(config,'Agent Relay · Orchestrator','orchestrator',modelSupport,dependencies);
+}
+function launchNative(config,title,role,modelSupport,dependencies) {
   createOrchestratorCommand(config,dependencies); // Reject unavailable CLIs before reserving a launch.
   return (async()=>{
-    const lease = await (dependencies.budget || defaultBudget()).reserve({role:'orchestrator'});
+    const lease = await (dependencies.budget || defaultBudget()).reserve({role});
     try {
       const launchFile = writeNativeLaunch(config,dependencies);
-      const args = [...terminalPrefix(path.dirname(launchFile),windowName,'Agent Relay · Orchestrator'),process.execPath,ORCHESTRATOR_TERMINAL,'@'+launchFile];
-      return {...await launchTerminal(args,dependencies),effort:effort || null,modelSupport};
+      const args = [...terminalPrefix(path.dirname(launchFile),config.windowName,title),process.execPath,ORCHESTRATOR_TERMINAL,'@'+launchFile];
+      return {...await launchTerminal(args,dependencies),effort:config.effort || null,modelSupport};
     }
     finally { await lease.release(); }
   })();
+}
+
+export const EVALS_WINDOW = 'agent-relay-evals';
+const EVALS_LABEL = /^# Relay Evals · ([A-Za-z0-9 '’“”-]{1,60})\n<!-- agent-relay-evals-analysis:v1 -->\n/;
+/** One interactive Claude or Codex chat per click on an Evals analysis; the server builds the prompt. */
+export function openEvalsAnalysisTerminal({prompt,provider = 'claude',model = '',cwd,cliPath,effort = 'high',port},dependencies = {}) {
+  const label = typeof prompt === 'string' ? EVALS_LABEL.exec(prompt)?.[1] : null;
+  if (!label) throw Error('Invalid Relay Evals analysis prompt');
+  validateProvider(provider,model,effort);
+  const modelSupport = validateModelEffort(provider,model,effort,{home:dependencies.home || os.homedir(),env:dependencies.env || process.env});
+  const config = {schema:1,provider,model,effort,cwd,cliPath:existingPath(cliPath),windowName:EVALS_WINDOW,port:terminalPort(port,dependencies),prompt};
+  return launchNative(config,'Relay Evals · '+label,'analysis',modelSupport,dependencies);
 }
 
 export function nativeLaunchDirectory({home = os.homedir()} = {}) {
@@ -422,7 +444,9 @@ export function createOrchestratorCommand(config,{home = os.homedir(),env = proc
   validateProvider(provider,model,effort); existingPath(cwd,true); existingPath(cliPath);
   terminalPrefix(cwd,windowName,'Agent Relay · Orchestrator'); terminalPort(port,{env:{}});
   validateModelEffort(provider,model,effort,{home,env});
-  if (typeof prompt !== 'string' || !/^# Agent Relay · (?:Orchestrator|Orquestador)\n<!-- agent-relay-native-orchestrator:v1 -->\n/.test(prompt) ||
+  // Evals analyses have their own header; Claude also gets their chat name.
+  const evalsLabel = typeof prompt === 'string' ? EVALS_LABEL.exec(prompt)?.[1] : null;
+  if (typeof prompt !== 'string' || !(evalsLabel || /^# Agent Relay · (?:Orchestrator|Orquestador)\n<!-- agent-relay-native-orchestrator:v1 -->\n/.test(prompt)) ||
       prompt.includes('\0') || Buffer.byteLength(prompt) > NATIVE_PROMPT_LIMIT) throw Error('Invalid native orchestrator prompt');
   const bins = providerBins(home,env);
   if (provider === 'codex') {
@@ -431,6 +455,6 @@ export function createOrchestratorCommand(config,{home = os.homedir(),env = proc
       ...(effort?['-c','model_reasoning_effort="'+effort+'"']:[]),prompt]};
   }
   if (!fs.existsSync(bins.claude)) throw Error('Claude CLI is not installed');
-  return {command:bins.claude,args:['--name','Agent Relay · Orchestrator','--disallowedTools','Agent,Task,Workflow','--settings',CLAUDE_GUARD_SETTINGS,
+  return {command:bins.claude,args:['--name',evalsLabel ? 'Relay Evals · '+evalsLabel : 'Agent Relay · Orchestrator','--disallowedTools','Agent,Task,Workflow','--settings',CLAUDE_GUARD_SETTINGS,
     ...(model?['--model',model]:[]),...(effort?['--effort',effort]:[]),'--',prompt]};
 }

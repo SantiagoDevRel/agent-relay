@@ -19,6 +19,9 @@ test('refinement preserves literal goal and tester criteria, pins controls, and 
     calls++; assert.equal(input.role, 'planner'); assert.equal(input.model, request.model); assert.equal(input.effort, '');
     assert.match(fs.readFileSync(input.promptFile, 'utf8'), /No target project was supplied/);
     assert.match(fs.readFileSync(input.promptFile, 'utf8'), /Never replace a difficult requirement/);
+    // Codex reads files only through its read-only sandbox shell; a blanket process ban leaves it blind.
+    assert.match(fs.readFileSync(input.promptFile, 'utf8'), /only file-reading tool is the shell inside the read-only sandbox/);
+    assert.doesNotMatch(fs.readFileSync(input.promptFile, 'utf8'), /never execute processes/);
     return { exitCode: 0, answer: JSON.stringify(answer), sessionHandle: 'codex-fixture' };
   });
   try {

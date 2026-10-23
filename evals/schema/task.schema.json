@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relay-evals/task/1",
+  "title": "Relay Evals catalog task (E4a) and frozen suite entry (E4c)",
+  "description": "One past task. Every interactive chat with a human prompt and every agent-work contract maps to a task or carries an exclusion reason. Suite fields are present only after freezing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "sources", "title", "project", "repoRoot", "baseCommit", "finalCommit", "requirements", "taskType", "model", "effort", "hasSpec", "outcome", "reproducible", "reproducibleReason", "excluded", "excludedReason"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^task:[a-f0-9]{16}$", "description": "task: + first 16 hex of sha256 of the sorted source keys." },
+    "sources": {
+      "type": "object", "additionalProperties": false, "required": ["chatIds", "contract"],
+      "properties": {
+        "chatIds": { "type": "array", "maxItems": 200, "items": { "type": "string", "pattern": "^(claude|codex):[A-Za-z0-9._-]{1,128}$" } },
+        "contract": { "type": ["string", "null"], "maxLength": 300, "description": "agent-work folder name of the checklist.md contract, if any." }
+      }
+    },
+    "title": { "type": "string", "maxLength": 200, "description": "Redacted short title." },
+    "project": { "type": ["string", "null"], "maxLength": 300 },
+    "repoRoot": { "type": ["string", "null"], "maxLength": 1000 },
+    "baseCommit": { "type": ["string", "null"], "pattern": "^[a-f0-9]{40}$", "description": "Commit the task started from (HEAD at the first prompt time on the chat branch)." },
+    "finalCommit": { "type": ["string", "null"], "pattern": "^[a-f0-9]{40}$", "description": "Accepted final state: last commit of the task including later fix commits within 72 h, after the user's corrections." },
+    "requirements": {
+      "type": "array", "maxItems": 200,
+      "items": { "type": "object", "additionalProperties": false, "required": ["id", "literal", "status"],
+        "properties": { "id": { "type": "string", "maxLength": 40 }, "literal": { "type": "string", "maxLength": 2000 }, "status": { "type": ["string", "null"], "maxLength": 40 } } }
+    },
+    "taskType": { "enum": ["feature", "bugfix", "research", "ops", "docs", "design", "review", "other"] },
+    "model": { "type": ["string", "null"], "maxLength": 80 },
+    "effort": { "type": ["string", "null"], "maxLength": 40 },
+    "hasSpec": { "type": "boolean" },
+    "outcome": {
+      "type": "object", "additionalProperties": false, "required": ["corrections", "falseDone", "interruptions", "fixedOrReverted72h", "turnsToFirstVerifiedCommit", "userTurns", "tokens"],
+      "description": "Aggregated real outcome from chat metrics (E2) of the source chats.",
+      "properties": {
+        "corrections": { "type": "integer", "minimum": 0 }, "falseDone": { "type": "integer", "minimum": 0 },
+        "interruptions": { "type": "integer", "minimum": 0 }, "fixedOrReverted72h": { "type": "integer", "minimum": 0 },
+        "turnsToFirstVerifiedCommit": { "type": ["integer", "null"], "minimum": 1 }, "userTurns": { "type": "integer", "minimum": 0 },
+        "tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reproducible": { "type": "boolean" },
+    "reproducibleReason": { "type": "string", "minLength": 3, "maxLength": 300, "description": "Why it can or cannot be replayed (e.g. 'no git repo', 'base commit missing', 'needs device/credentials', 'research only')." },
+    "excluded": { "type": "boolean", "description": "true only for chats deliberately left out of the benchmark (automated lane, empty chat, duplicate fork)." },
+    "excludedReason": { "type": ["string", "null"], "maxLength": 300 },
+    "suite": {
+      "type": "object", "additionalProperties": false, "required": ["frozenAt", "prompt", "visibleChecks", "hiddenChecks", "split"],
+      "description": "Present only in the frozen reproducible suite.",
+      "properties": {
+        "frozenAt": { "type": "string" },
+        "prompt": { "type": "string", "maxLength": 20000, "description": "Original first prompt, redacted." },
+        "visibleChecks": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/check" } },
+        "hiddenChecks": { "type": "array", "maxItems": 24, "items": { "$ref": "#/$defs/check" }, "description": "Derived from the accepted final state: its tests/evidence, contract requirements and later fix commits. Never shown to the runner's worker." },
+        "split": { "enum": ["dev", "holdout"] },
+        "stratum": { "type": "string", "maxLength": 120 }
+      }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object", "additionalProperties": false, "required": ["argv", "origin"],
+      "properties": {
+        "argv": { "type": "array", "minItems": 1, "maxItems": 64, "items": { "type": "string", "maxLength": 2000 } },
+        "origin": { "enum": ["existing-test", "final-state-test", "contract-requirement", "fix-commit", "generated"] },
+        "description": { "type": "string", "maxLength": 300 },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 3600000 }
+      }
+    }
+  }
+}

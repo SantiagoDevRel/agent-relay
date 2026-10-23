@@ -1,0 +1,26 @@
+{"timestamp": "2026-10-20T11:00:00.000Z", "type": "session_meta", "payload": {"id": "22222222-3333-4444-8555-666666666666", "timestamp": "2026-10-20T11:00:00.000Z", "cwd": "C:\\work\\api", "originator": "codex-tui", "source": "cli", "git": {"branch": "main"}}}
+{"timestamp": "2026-10-20T11:00:00.100Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>\n  <cwd>C:\\work\\api</cwd>\n</environment_context>"}]}}
+{"timestamp": "2026-10-20T11:00:00.200Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "# AGENTS.md instructions for C:\\work\\api\n\nInjected rules."}]}}
+{"timestamp": "2026-10-20T11:00:01.000Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "t1"}}
+{"timestamp": "2026-10-20T11:00:01.100Z", "type": "turn_context", "payload": {"cwd": "C:\\work\\api", "model": "gpt-6.1-sol", "effort": "high"}}
+{"timestamp": "2026-10-20T11:00:01.200Z", "type": "event_msg", "payload": {"type": "user_message", "message": "Fix the failing API test", "images": []}}
+{"timestamp": "2026-10-20T11:00:01.300Z", "type": "event_msg", "payload": {"type": "item_completed", "turn_id": "t1", "item": {"type": "UserMessage", "id": "um1", "content": [{"type": "text", "text": "Fix the failing API test"}]}}}
+{"timestamp": "2026-10-20T11:00:02.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "shell", "call_id": "c1", "arguments": "{\"command\": [\"bash\", \"-lc\", \"npm test\"], \"workdir\": \"C:\\\\work\\\\api\"}"}}
+{"timestamp": "2026-10-20T11:00:03.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c1", "output": "{\"output\": \"1 failing\", \"metadata\": {\"exit_code\": 1, \"duration_seconds\": 1.2}}"}}
+{"timestamp": "2026-10-20T11:00:04.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "call_id": "c2", "arguments": "{\"cmd\": \"npx tsc --noEmit\", \"workdir\": \"C:\\\\work\\\\api\"}"}}
+{"timestamp": "2026-10-20T11:00:05.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c2", "output": "Exit code: 0\nWall time: 1.0 seconds\nOutput:\n"}}
+{"timestamp": "2026-10-20T11:00:06.000Z", "type": "response_item", "payload": {"type": "custom_tool_call", "name": "apply_patch", "call_id": "c3", "input": "*** Begin Patch\n*** End Patch"}}
+{"timestamp": "2026-10-20T11:00:07.000Z", "type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "c3", "output": "{\"output\": \"Success.\", \"metadata\": {\"exit_code\": 0}}"}}
+{"timestamp": "2026-10-20T11:00:08.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 1000, "cached_input_tokens": 600, "output_tokens": 100, "reasoning_output_tokens": 40, "total_tokens": 1100}, "last_token_usage": {"input_tokens": 1000, "output_tokens": 100}}}}
+{"timestamp": "2026-10-20T11:00:09.000Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Partial fix applied."}]}}
+{"timestamp": "2026-10-20T11:00:10.000Z", "type": "event_msg", "payload": {"type": "turn_aborted", "reason": "interrupted"}}
+{"timestamp": "2026-10-20T11:01:00.000Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "t2"}}
+{"timestamp": "2026-10-20T11:01:00.100Z", "type": "turn_context", "payload": {"cwd": "C:\\work\\api", "model": "gpt-6.1-sol", "effort": "high"}}
+{"timestamp": "2026-10-20T11:01:00.200Z", "type": "event_msg", "payload": {"type": "user_message", "message": "sigue, y haz commit cuando pase"}}
+{"timestamp": "2026-10-20T11:01:01.000Z", "type": "response_item", "payload": {"type": "function_call", "name": "shell", "call_id": "c4", "arguments": "{\"command\": [\"bash\", \"-lc\", \"npm test && git commit -am fix\"]}"}}
+{"timestamp": "2026-10-20T11:01:02.000Z", "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c4", "output": "{\"output\": \"# pass 3\\n[main 9f8e7d6] fix\\n 1 file changed\", \"metadata\": {\"exit_code\": 0}}"}}
+{"timestamp": "2026-10-20T11:01:03.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 1800, "cached_input_tokens": 1200, "output_tokens": 160, "reasoning_output_tokens": 60, "total_tokens": 1960}, "last_token_usage": {"input_tokens": 1800, "output_tokens": 160}}}}
+{"timestamp": "2026-10-20T11:01:04.000Z", "type": "compacted", "payload": {"message": ""}}
+{"timestamp": "2026-10-20T11:01:04.500Z", "type": "event_msg", "payload": {"type": "context_compacted"}}
+{"timestamp": "2026-10-20T11:01:05.000Z", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t2", "last_agent_message": "Committed 9f8e7d6; tests pass."}}
+{"timestamp": "2026-10-20T11:01:06.000Z", "type": "token_usage_record", "payload": {}}

@@ -71,7 +71,9 @@ if ($data.title) {
   $url = [Uri]$data.url
   $local = $url.Scheme -eq 'http' -and $url.Host -eq '127.0.0.1'
   $chat = $url.AbsoluteUri -match '^chats-dashboard-toast:[0-9]{1,5}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{64}$'
-  if (!$local -and !$chat) { throw 'Only a local dashboard or signed chat link can be opened' }
+  # The weekly Relay Evals report: a local HTML file in a dated reports folder.
+  $report = $url.Scheme -eq 'file' -and $url.IsLoopback -and $url.LocalPath -match '\\relay-evals\\reports\\\d{4}-\d{2}-\d{2}\\report\.html$'
+  if (!$local -and !$chat -and !$report) { throw 'Only a local dashboard, signed chat or Evals report link can be opened' }
   $esc = [Security.SecurityElement]
   $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
   $xml.LoadXml('<toast activationType="protocol" launch="' + $esc::Escape($url.AbsoluteUri) + '"><visual><binding template="ToastGeneric"><text>' + $esc::Escape([string]$data.title) + '</text><text>' + $esc::Escape([string]$data.text) + '</text></binding></visual></toast>')

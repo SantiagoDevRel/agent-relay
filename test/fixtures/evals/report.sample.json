@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-25T20:05:00.000Z",
+  "period": { "start": "2026-10-19T05:00:00.000Z", "end": "2026-10-26T05:00:00.000Z", "label": "Oct 19 - Oct 25, 2026" },
+  "previousPeriod": { "start": "2026-10-12T05:00:00.000Z", "end": "2026-10-19T05:00:00.000Z", "label": "Oct 12 - Oct 18, 2026" },
+  "coverage": { "chatsTotal": 2596, "chatsInteractive": 1210, "chatsInPeriod": 84, "filesScanned": 2596, "filesPartial": 3, "firstChatAt": "2026-05-20T12:00:00.000Z", "lastChatAt": "2026-10-25T19:58:00.000Z" },
+  "summary": [
+    "This week you ran 84 chats and corrected the agent less often than last week.",
+    "Fewer finished claims turned out to be broken.",
+    "Commits fixed or reverted within three days went up slightly.",
+    "Next week, start feature chats with a short written spec and compare."
+  ],
+  "kpis": [
+    { "id": "correction-rate", "label": "Corrections", "value": 1.8, "previous": 2.4, "unit": "per10", "goodDirection": "down", "trend": "better", "meaning": "How many times you had to correct the agent per 10 messages you sent.", "n": 410, "insufficient": false },
+    { "id": "false-done-rate", "label": "Broken \"done\"", "value": 12, "previous": 18, "unit": "percent", "goodDirection": "down", "trend": "better", "meaning": "Share of times the agent said it was finished but you then reported a problem.", "n": 66, "insufficient": false },
+    { "id": "verified-commit-rate", "label": "Verified commits", "value": 71, "previous": 70, "unit": "percent", "goodDirection": "up", "trend": "same", "meaning": "Share of commits made after a passing test, build or lint in the same turn.", "n": 52, "insufficient": false },
+    { "id": "fix-revert-rate", "label": "Fixed within 3 days", "value": null, "previous": null, "unit": "percent", "goodDirection": "down", "trend": "unknown", "meaning": "Share of commits that needed a fix or revert within 72 hours.", "n": 6, "insufficient": true }
+  ],
+  "experiment": { "title": "Spec first for features", "action": "Use agent-relay-spec before every feature chat this week.", "why": "Chats without a spec had more corrections.", "measure": "Corrections per 10 messages in feature chats." },
+  "predictors": [
+    { "factor": "no-spec", "label": "No written spec", "outcome": "chat had a correction or broken done", "effect": 14.2, "ci95": [5.1, 23.0], "nWith": 140, "nWithout": 61, "status": "ok", "validated": true },
+    { "factor": "compacted", "label": "Context was compacted", "outcome": "chat had a correction or broken done", "effect": null, "ci95": null, "nWith": 7, "nWithout": 194, "status": "insufficient", "validated": false }
+  ],
+  "corrections": { "total": 74, "byCategory": [ { "category": "wrong-result", "label": "It did not work", "count": 31, "previous": 40 } ], "examples": [ { "category": "wrong-result", "text": "no funciona, sigue saliendo Hello" } ] },
+  "models": { "scope": "All interactive chats to date", "rows": [ { "dimension": "model", "value": "claude-opus-5-5", "chats": 640, "correctionRate": 2.1, "falseDoneRate": 0.15, "fixRevertRate": 0.08, "medianTurnsToVerifiedCommit": 3, "insufficient": false } ] },
+  "benchmark": { "catalogTasks": 1450, "excludedTasks": 1146, "reproducibleTasks": 212, "holdoutTasks": 42, "estimate": { "turns": 1272, "days": 9.9, "turnsPerDay": 128 }, "runs": [] },
+  "judge": { "status": "not-calibrated", "labeled": 0, "kappa": null, "correlation": null, "note": "Needs about 100 labels from the owner before its scores are trusted." },
+  "methodology": [ { "term": "Correction", "explanation": "A message where you told the agent something was wrong, missing or not what you asked." } ],
+  "missing": ["DGX model pass unavailable: deterministic rules only."],
+  "run": { "durationMs": 912000, "peakRssBytes": 412000000, "trigger": "manual" }
+}

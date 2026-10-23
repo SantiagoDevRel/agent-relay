@@ -1,0 +1,17 @@
+{
+  "_comment": "Synthetic specs for the Relay Evals judge tests. Not real transcript text.",
+  "strong": [
+    "Add a greeting widget to the demo app.\n\nRequirements:\n1. R1 The widget greets the user by first name.\n2. R2 The greeting switches to Spanish when the locale is es.\n\nAcceptance: greet('Ana', 'es') returns \"Hola, Ana\" and the header shows it within 200 ms.\n\nScope: only edit src/greeting/ and its tests. Do not touch the database schema. Do not commit or deploy.\n\nVerification: run npm test and npm run lint, check the page at 390 px and 1440 px and report both screenshots.",
+    "Agrega un widget de saludo a la app demo.\n\nRequisitos:\n1. R1 El widget saluda al usuario por su nombre.\n2. R2 El saludo cambia a inglés cuando el idioma es en.\n\nCriterios de aceptación: greet('Ana', 'en') devuelve \"Hello, Ana\" y la cabecera lo muestra en menos de 200 ms.\n\nAlcance: solo edita src/greeting/ y sus pruebas. No toques el esquema de la base de datos. No hagas commit.\n\nVerifica con npm test y npm run lint, y una captura a 390 px."
+  ],
+  "vague": [
+    "Hey, can you take a look at the greeting thing in the demo app? It feels off to me, make it better please.",
+    "Oye, mira lo del saludo en la app demo, siento que algo anda raro, arréglalo como te parezca mejor por favor."
+  ],
+  "only": {
+    "literal": "Two things for the demo app:\n1. R1 Rename the greeting widget to Welcome.\n2. R2 Move the greeting widget to the sidebar.\nThat is all I need from this session today.",
+    "acceptance": "For the demo app greeting: acceptance is that greet('Ana') returns \"Hello, Ana\" and the header shows it in under 200 ms after login.",
+    "scope": "In the demo app, only edit src/greeting/ for this one. Do not touch the database schema and do not deploy anything without asking first.",
+    "verification": "When you change the demo app greeting, run npm test and npm run lint, then check the page at 390 px and attach screenshots of it."
+  }
+}

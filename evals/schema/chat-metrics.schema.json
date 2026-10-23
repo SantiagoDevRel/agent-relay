@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relay-evals/chat-metrics/1",
+  "title": "Relay Evals Layer 1 metrics (E2/E3 output, one per chat record)",
+  "description": "Deterministic per-chat outcome metrics. Excerpts are redacted and short; the full text stays in the chat record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "provider", "project", "repoRoot", "model", "effort", "startedAt", "endedAt", "week", "automated", "taskType", "hasSpec", "specSignals", "promptChars", "userTurns", "corrections", "interruptions", "doneClaims", "falseDone", "commits", "turnsToFirstVerifiedCommit", "commitsChecked72h", "commitsFixedOrReverted72h", "tokens", "compactions", "toolCalls", "toolErrors", "modelPass", "coverage"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^(claude|codex):[A-Za-z0-9._-]{1,128}$" },
+    "provider": { "enum": ["claude", "codex"] },
+    "project": { "type": ["string", "null"], "maxLength": 300 },
+    "repoRoot": { "type": ["string", "null"], "maxLength": 1000, "description": "git rev-parse --show-toplevel of the chat cwd (or of a commit event's cwd), null when not a repo or missing." },
+    "model": { "type": ["string", "null"], "maxLength": 80, "description": "Model used by the most turns." },
+    "effort": { "type": ["string", "null"], "maxLength": 40, "description": "Effort used by the most turns, null when never recorded." },
+    "startedAt": { "type": ["string", "null"] },
+    "endedAt": { "type": ["string", "null"] },
+    "week": { "type": ["string", "null"], "pattern": "^\\d{4}-W\\d{2}$", "description": "ISO week of startedAt in America/Bogota." },
+    "automated": { "type": "boolean" },
+    "taskType": { "enum": ["feature", "bugfix", "research", "ops", "docs", "design", "review", "other"] },
+    "hasSpec": { "type": "boolean", "description": "First prompt is a specification: agent-relay-spec / contract / checklist reference, or explicit requirements + acceptance structure." },
+    "specSignals": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 60 } },
+    "promptChars": { "type": "integer", "minimum": 0, "description": "Characters of the first human prompt." },
+    "userTurns": { "type": "integer", "minimum": 0, "description": "Number of human prompt messages (kind=prompt)." },
+    "corrections": {
+      "type": "object", "additionalProperties": false, "required": ["count", "byCategory", "items"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "byCategory": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }, "propertyNames": { "$ref": "#/$defs/category" } },
+        "items": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/correction" } }
+      }
+    },
+    "interruptions": { "type": "integer", "minimum": 0 },
+    "doneClaims": { "type": "integer", "minimum": 0, "description": "Turns whose agentFinal declares the work finished/verified." },
+    "falseDone": {
+      "type": "object", "additionalProperties": false, "required": ["count", "items"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "items": { "type": "array", "maxItems": 100, "items": { "type": "object", "additionalProperties": false, "required": ["claimTurn", "reportTurn", "claimExcerpt", "reportExcerpt"],
+          "properties": { "claimTurn": { "type": "integer", "minimum": 0 }, "reportTurn": { "type": "integer", "minimum": 0 }, "claimExcerpt": { "type": "string", "maxLength": 200 }, "reportExcerpt": { "type": "string", "maxLength": 200 } } } }
+      }
+    },
+    "commits": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/commit" } },
+    "turnsToFirstVerifiedCommit": { "type": ["integer", "null"], "minimum": 1, "description": "1-based count of human prompt turns until the first commit whose turn ran a passing verification command before it; null if none." },
+    "commitsChecked72h": { "type": "integer", "minimum": 0, "description": "Commits whose 72 h follow-up window could be inspected in Git." },
+    "commitsFixedOrReverted72h": { "type": "integer", "minimum": 0 },
+    "tokens": {
+      "type": "object", "additionalProperties": false, "required": ["input", "cached", "cacheWrite", "output", "reasoning", "total"],
+      "properties": { "input": { "type": "integer", "minimum": 0 }, "cached": { "type": "integer", "minimum": 0 }, "cacheWrite": { "type": "integer", "minimum": 0 }, "output": { "type": "integer", "minimum": 0 }, "reasoning": { "type": "integer", "minimum": 0 }, "total": { "type": "integer", "minimum": 0 } }
+    },
+    "compactions": { "type": "integer", "minimum": 0 },
+    "toolCalls": { "type": "integer", "minimum": 0 },
+    "toolErrors": { "type": "integer", "minimum": 0 },
+    "modelPass": {
+      "type": "object", "additionalProperties": false, "required": ["status"],
+      "description": "Claude labels of the follow-up messages (evals/claude-labels.mjs). ok = corrections and broken done come from Claude (model; added = Claude corrections); missing = labels were requested but not every message of this chat is labeled, so the deterministic rules were used; skipped = labels not requested.",
+      "properties": { "status": { "enum": ["ok", "missing", "skipped"] }, "model": { "type": "string", "maxLength": 80 }, "added": { "type": "integer", "minimum": 0 } }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false, "required": ["transcriptComplete", "gitChecked"],
+      "properties": { "transcriptComplete": { "type": "boolean" }, "gitChecked": { "type": "boolean" }, "notes": { "type": "array", "maxItems": 20, "items": { "type": "string", "maxLength": 200 } } }
+    }
+  },
+  "$defs": {
+    "category": { "enum": ["wrong-result", "incomplete", "misunderstood", "scope", "process", "language-style", "redo", "other"] },
+    "correction": {
+      "type": "object", "additionalProperties": false, "required": ["turn", "category", "rule", "source", "excerpt"],
+      "properties": {
+        "turn": { "type": "integer", "minimum": 0 },
+        "category": { "$ref": "#/$defs/category" },
+        "rule": { "type": "string", "pattern": "^[a-z0-9-]{2,60}$", "description": "Deterministic rule id, or 'claude' for a Claude label (source 'model')." },
+        "source": { "enum": ["rule", "model"] },
+        "excerpt": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "commit": {
+      "type": "object", "additionalProperties": false, "required": ["sha", "turn", "repoRoot", "verifiedBefore", "followUp"],
+      "properties": {
+        "sha": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" },
+        "turn": { "type": "integer", "minimum": 0 },
+        "repoRoot": { "type": ["string", "null"], "maxLength": 1000 },
+        "verifiedBefore": { "type": "boolean", "description": "A test/build/lint/typecheck event that did not fail ran earlier in the same turn." },
+        "followUp": { "enum": ["fixed", "reverted", "none", "unknown"], "description": "Within 72 h after the commit: a later commit reverting it, or a later fix commit touching the same files; unknown when Git is unavailable." },
+        "followUpSha": { "type": "string", "pattern": "^[a-f0-9]{7,40}$" },
+        "hoursToFollowUp": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

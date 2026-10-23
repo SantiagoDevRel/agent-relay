@@ -150,4 +150,6 @@ export const missionAction = (id: string, action: 'start' | 'pause' | 'resume' |
 export const retryMissionTask = (id: string, taskId: string) => post('/api/missions/retry', { id, taskId });
 export const messageMissionTask = (id: string, taskId: string, text: string) => post('/api/missions/message', { id, taskId, text });
 export const openMissionTerminal = (id: string, taskId: string) => post('/api/missions/terminal', { id, taskId });
+/** Opens one interactive Claude or Codex chat for a fixed Relay Evals analysis; the server builds the prompt and picks the model. */
+export const openEvalsAnalysis = (id: string, provider: string) => post<{ opened: boolean; id: string; provider: string; model: string; date: string }>('/api/evals/analyze', { id, provider });
 export const getMissionLog = (id: string, taskId: string, signal?: AbortSignal) => get<{ text: string }>(`/api/missions/log?id=${encodeURIComponent(id)}&taskId=${encodeURIComponent(taskId)}`, signal);

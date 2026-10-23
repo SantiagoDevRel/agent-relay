@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "task:0123456789abcdef",
+  "sources": { "chatIds": ["claude:0f8c2a6e-1111-4222-8333-944455556666"], "contract": "demo-greeting-20261019" },
+  "title": "Add a Spanish greeting",
+  "project": "apps/demo",
+  "repoRoot": "C:/Users/example/Projects/workspace",
+  "baseCommit": "1111111111111111111111111111111111111111",
+  "finalCommit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "requirements": [ { "id": "R1", "literal": "greet(name,'es') returns Hola", "status": "completed" } ],
+  "taskType": "feature",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "hasSpec": true,
+  "outcome": { "corrections": 1, "falseDone": 1, "interruptions": 1, "fixedOrReverted72h": 0, "turnsToFirstVerifiedCommit": 3, "userTurns": 3, "tokens": 172800 },
+  "reproducible": true,
+  "reproducibleReason": "Git repo with base commit and node tests available",
+  "excluded": false,
+  "excludedReason": null,
+  "suite": {
+    "frozenAt": "2026-10-22T20:00:00.000Z",
+    "prompt": "Add a Spanish greeting. Requirements: R1 greet(name,'es') returns Hola. Acceptance: node --test passes.",
+    "visibleChecks": [ { "argv": ["node", "--test", "test/greeting.test.mjs"], "origin": "existing-test" } ],
+    "hiddenChecks": [ { "argv": ["node", "--test", "test/greeting-es.hidden.test.mjs"], "origin": "final-state-test", "description": "Spanish output from the accepted final state" } ],
+    "split": "dev",
+    "stratum": "feature|claude-opus-5-5|spec"
+  }
+}
