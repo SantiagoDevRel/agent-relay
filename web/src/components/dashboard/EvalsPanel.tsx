@@ -123,10 +123,11 @@ function ModelsTable({ rows }: { rows: EvalsModelRow[] }) {
 type Ask = { id: EvalsAnalysisId; agent: string; phase: 'opening' | 'opened' | 'error'; message?: string };
 
 /** One click opens one Claude or Codex chat in the "agent-relay-evals" terminal window; nothing runs until then. */
-function AskAgent() {
+function AskAgent({ desktop }: { desktop: boolean }) {
   const [ask, setAsk] = useState<Ask | null>(null);
   const [provider, setProvider] = useState<EvalsAnalysisProvider>('claude');
   const chosen = EVALS_ANALYSIS_PROVIDERS.find(item => item.id === provider)!;
+  if (!desktop) return <p className="dialog-note">Opening an analysis terminal is Windows only. You can read this report here.</p>;
   const open = (id: EvalsAnalysisId) => {
     const agent = `${chosen.label} (${chosen.modelLabel})`;
     setAsk({ id, agent, phase: 'opening' });
@@ -150,7 +151,7 @@ function AskAgent() {
   </section>;
 }
 
-function Report({ report, date }: { report: EvalsReport; date: string }) {
+function Report({ report, date, desktop }: { report: EvalsReport; date: string; desktop: boolean }) {
   const { methodology } = report;
   const top = report.predictors.slice(0, 3);
   const generated = new Date(report.generatedAt);
@@ -168,7 +169,7 @@ function Report({ report, date }: { report: EvalsReport; date: string }) {
       <p className="evals-experiment-action">{report.experiment.action}</p>
       <dl className="evals-pairs"><div><dt>Why</dt><dd>{report.experiment.why}</dd></div><div><dt>How it is measured</dt><dd>{report.experiment.measure}</dd></div></dl>
     </section>
-    <AskAgent />
+    <AskAgent desktop={desktop} />
     <div className="evals-sections">
       <Section title="What predicts problems">
         {top.length ? <ol className="evals-list">{top.map(predictor => <Predictor key={predictor.factor} predictor={predictor} />)}</ol> : <p>Insufficient data: no factor has enough chats to compare yet.</p>}
@@ -214,7 +215,7 @@ function Report({ report, date }: { report: EvalsReport; date: string }) {
 }
 
 /** Read-only Evals page. It reads the latest report the first time the page is shown and on Reload only. */
-export function EvalsPanel({ active }: { active: boolean }) {
+export function EvalsPanel({ active, desktop = true }: { active: boolean; desktop?: boolean }) {
   const [load, setLoad] = useState<Load>({ phase: 'idle' });
   const started = useRef(false);
   const read = useCallback((reload: boolean) => {
@@ -236,7 +237,7 @@ export function EvalsPanel({ active }: { active: boolean }) {
     <div className="evals-body">
       {load.phase === 'idle' || load.phase === 'loading' ? <p className="dialog-note" role="status">Loading the latest report…</p>
         : load.phase === 'error' ? <div className="notice notice-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>{load.disconnected ? 'Server disconnected.' : 'Could not load the report.'} <span>{load.disconnected ? 'Turn the dashboard on, then choose Reload.' : 'Choose Reload to try again.'}</span></p></div>
-        : ready && ready.report ? <Report report={ready.report} date={ready.date} />
+        : ready && ready.report ? <Report report={ready.report} date={ready.date} desktop={desktop} />
         : ready && ready.reason === 'invalid-report' ? <div className="notice notice-warning" role="status"><AlertTriangle size={18} aria-hidden="true" /><p>The latest report could not be read. <span>It may be incomplete or from another version. Generate it again, then choose Reload.</span></p></div>
         : <div className="evals-empty" role="status"><p className="evals-heading">No report yet.</p><p>It is generated every Sunday at 20:00, or run it manually: <code>node evals/cli.mjs weekly</code> in tools/chats-dashboard.</p></div>}
     </div>

@@ -114,9 +114,9 @@ export function ChatRow({ chat, now, showFolder, onNotify }: { chat: Chat; now: 
     <div className="card-top">
       <StateBadge state={chat.state} />
       <Button className="favorite-button" aria-label={`${chat.favorite ? 'Remove from' : 'Add to'} favorites: ${chat.title}`} aria-pressed={Boolean(chat.favorite)} disabled={saving} onClick={() => save({ favorite: !chat.favorite })}><Star size={16} fill={chat.favorite ? 'currentColor' : 'none'} /></Button>
-      {chat.alive
+      {chat.terminalMode !== 'tmux' && (chat.alive
         ? <Button className="open-button" onClick={goTo} disabled={busy !== null} aria-label={`Go to chat ${chat.title} in Windows Terminal`}><ArrowUpRight size={14} />{busy === 'focus' ? 'Finding…' : 'Go to chat'}</Button>
-        : chat.canOpen && <Button className="open-button" onClick={open} disabled={busy !== null} aria-label={`Open ${chat.title} in Windows Terminal`}><ExternalLink size={14} />{busy === 'open' ? 'Opening…' : 'Open'}</Button>}
+        : chat.canOpen && <Button className="open-button" onClick={open} disabled={busy !== null} aria-label={`Open ${chat.title} in Windows Terminal`}><ExternalLink size={14} />{busy === 'open' ? 'Opening…' : 'Open'}</Button>)}
     </div>
     <h3>{chat.title}</h3>
     <div className="chat-next-step"><p>{chatNextStep(chat)}</p>{chat.delivery && <p className="dialog-note">Delivery: {deliveryStage(chat) === 'unknown' ? 'Not verified yet' : deliveryStage(chat)} · <a href="#delivery">View evidence</a></p>}</div>
@@ -149,13 +149,15 @@ export function ChatRow({ chat, now, showFolder, onNotify }: { chat: Chat; now: 
     <div className="terminal" role="group" aria-label={`Commands to resume ${chat.title}`}>
       <CommandLine label={`folder for ${chat.title}`} command={chat.cdCommand} onNotify={onNotify} />
       <CommandLine label={`command for ${toolName} for ${chat.title}`} command={chat.runCommand} onNotify={onNotify} />
+      {chat.attachCommand && <CommandLine label={`tmux session for ${chat.title}`} command={chat.attachCommand} onNotify={onNotify} />}
     </div>
+    {chat.terminalMode === 'tmux' && <p className="dialog-note">Use Conversation to send a message. Attach or resume in the VM terminal; desktop focus and close controls are Windows only.</p>}
     <div className="card-actions">
       <Button aria-haspopup="dialog" onClick={() => setConversationOpen(true)}><ScrollText size={14} />Conversation</Button>
       <Button aria-haspopup="dialog" onClick={() => setSummaryOpen(true)} aria-label={`Summary for ${chat.title}`}><ScrollText size={14} />Summary</Button>
       <Button aria-expanded={noteOpen} onClick={() => setNoteOpen(!noteOpen)}><NotebookPen size={14} />{chat.note ? 'Edit note' : 'Note'}</Button>
       <Button aria-haspopup="dialog" onClick={()=>setAssistMode('task')}><WandSparkles size={14}/>Prompts and handoff</Button>
-      {chat.alive && chat.pid !== undefined && <Button className="close-chat-button" aria-expanded={confirmClose} aria-controls={`close-${chat.id}`} disabled={busy === 'close'} onClick={() => setConfirmClose(!confirmClose)} aria-label={`Close ${chat.title}`}><Power size={14} />Close chat</Button>}
+      {chat.terminalMode !== 'tmux' && chat.alive && chat.pid !== undefined && <Button className="close-chat-button" aria-expanded={confirmClose} aria-controls={`close-${chat.id}`} disabled={busy === 'close'} onClick={() => setConfirmClose(!confirmClose)} aria-label={`Close ${chat.title}`}><Power size={14} />Close chat</Button>}
     </div>
     <label className="chat-outcome">Grouping project<select aria-label={`Project for ${chat.title}`} value={chat.projectFolder == null ? 'auto' : `project:${chat.projectFolder}`} disabled={saving} onChange={e=>save({projectFolder:e.target.value === 'auto' ? null : e.target.value.slice(8)})}><option value="auto">Automatic: {chat.folder || 'Environment'}</option>{projects.map(folder=><option key={folder} value={`project:${folder}`}>{folder || 'Environment'}</option>)}</select></label>
     <label className="chat-outcome">Chat outcome<select value={chat.outcome || 'none'} disabled={saving} onChange={e=>save({outcome:e.target.value as Chat['outcome']})}><option value="none">Not evaluated</option><option value="useful">Useful</option><option value="corrected">Needed corrections</option><option value="abandoned">Abandoned</option></select></label>

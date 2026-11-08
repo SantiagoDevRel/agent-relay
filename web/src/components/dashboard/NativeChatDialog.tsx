@@ -37,7 +37,7 @@ export function NativeChatDialog({ chat, onClose }: { chat: Chat; onClose: () =>
   }
   return createPortal(<dialog ref={dialog} className="summary-dialog native-chat-dialog" aria-labelledby={`conversation-${chat.id}`} onCancel={onClose}>
     <div className="dialog-header"><div><p className="dialog-label">Conversation · {chat.tool === 'claude' ? 'Claude' : 'Codex'}</p><h2 id={`conversation-${chat.id}`}>{chat.title}</h2></div><Button onClick={onClose} aria-label="Close conversation"><X size={20} /></Button></div>
-    <p className="dialog-note">Read and write in your laptop’s chat. Each message starts a turn with that chat’s current model.</p>
+    <p className="dialog-note">Read and write in your {chat.terminalMode === 'tmux' ? 'VM' : 'laptop'}’s chat. Each message starts a turn with that chat’s current model.</p>
     {error && <p className="error-notice" role="alert">{error}</p>}
     {!conversation && !error && <p role="status">Reading conversation…</p>}
     {conversation && <><div className="native-conversation" aria-label="Chat messages">
@@ -45,7 +45,7 @@ export function NativeChatDialog({ chat, onClose }: { chat: Chat; onClose: () =>
       {conversation.messages.map((item, index) => <article className={`native-message native-message-${item.role}`} key={`${item.ts}-${index}`}><p className="dialog-label">{item.role === 'user' ? 'You' : chat.tool === 'claude' ? 'Claude' : 'Codex'}{item.ts > 0 && <time dateTime={new Date(item.ts).toISOString()}> · {new Date(item.ts).toLocaleTimeString('en-US')}</time>}</p><div>{item.text}</div></article>)}
     </div>{conversation.partial && <p className="dialog-note">This is a long chat: a recent part of the conversation is shown.</p>}
       <label className="native-message-label" htmlFor={`message-${chat.id}`}>Your message<textarea id={`message-${chat.id}`} value={message} onChange={event => setMessage(event.target.value)} maxLength={12000} rows={4} placeholder="Write what you want to ask this chat" /></label>
-      <p className="dialog-note">{conversation.leased ? 'This chat is in an active cycle. Use the orchestrator controls to stop the cycle before writing.' : !conversation.alive ? 'Open this chat from Projects to continue.' : !conversation.canSend ? 'Wait for its turn to finish. The terminal input must be empty.' : 'The message is sent once and saved. It is not retried automatically.'}</p>
+      <p className="dialog-note">{conversation.leased ? 'This chat is in an active cycle. Use the orchestrator controls to stop the cycle before writing.' : !conversation.alive ? chat.terminalMode === 'tmux' ? 'Resume this chat with chat-tab in the VM to continue.' : 'Open this chat from Projects to continue.' : !conversation.canSend ? 'Wait for its turn to finish. The terminal input must be empty.' : 'The message is sent once and saved. It is not retried automatically.'}</p>
       {notice && <p role="status">{notice}</p>}
       {awaiting !== null && <Button onClick={() => { setAwaiting(null); setNotice('Check the latest messages before sending another request.'); }}>I checked the conversation</Button>}
       <div className="dialog-actions"><Button disabled={sending || awaiting !== null || !conversation.canSend || !message.trim()} onClick={send}><Send size={16} />{sending ? 'Sending…' : 'Send to chat'}</Button><Button onClick={onClose}>Close</Button></div>

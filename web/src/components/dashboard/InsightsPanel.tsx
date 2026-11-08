@@ -18,15 +18,16 @@ export function InsightsPanel({snapshot,onNotify}:{snapshot:Snapshot;onNotify:No
   load();return()=>{controller.abort();clearTimeout(timer);};
  },[open]);
  const resources=snapshot.resources,ram=resources?.ram;
+ const desktop=!snapshot.server.platform || snapshot.server.platform==='win32';
  const stale=Boolean(resources?.at && Date.now()-resources.at>45000);
  async function save(){setSaving(true);try{await saveAssistance({handoffTokens:tokens,handoffPercent:percent});onNotify('Handoff thresholds saved.','info');}catch{onNotify('Could not save thresholds. Use 10,000–2,000,000 tokens and 50–95%.');}finally{setSaving(false);}}
  return <section className="panel insights-panel">
-  <button type="button" className="insights-toggle" aria-expanded={open} aria-controls="insights-body" onClick={()=>setOpen(!open)}><span><Activity size={18} aria-hidden="true" /><strong>Usage and laptop</strong></span><span>{ram ? `${memoryNumber(ram.available)} free` : 'Reading RAM…'} · CPU {resources?.cpuPercent == null ? 'unknown' : `${Math.round(resources.cpuPercent)} %`}{stale?' · Stale sample':''} · {open?'Hide':'View details'}</span></button>
+  <button type="button" className="insights-toggle" aria-expanded={open} aria-controls="insights-body" onClick={()=>setOpen(!open)}><span><Activity size={18} aria-hidden="true" /><strong>{desktop?'Usage and laptop':'Recorded usage'}</strong></span><span>{desktop ? <>{ram ? `${memoryNumber(ram.available)} free` : 'Reading RAM…'} · CPU {resources?.cpuPercent == null ? 'unknown' : `${Math.round(resources.cpuPercent)} %`}{stale?' · Stale sample':''}</> : 'Chat CPU/RAM: Windows only'} · {open?'Hide':'View details'}</span></button>
   {open && <div id="insights-body" className="insights-body">
     {error && <p role="alert" className="assistant-warning">{error}</p>}
     {resources?.error && <p role="alert">{resources.error}</p>}
     {stale && <p role="status" className="assistant-warning">The resource sample is over 45 seconds old and may be outdated.</p>}
-    <p className="dialog-note">{ram && <>Usable RAM: {memoryNumber(ram.total)}. </>}{resources?.processCount ?? 0} main chat processes. Cards show resident RAM and CPU; child tools and the browser are separate.{resources?.at ? ` Sample: ${new Date(resources.at).toLocaleTimeString('en-US')}.` : ''}</p>
+    {desktop ? <p className="dialog-note">{ram && <>Usable RAM: {memoryNumber(ram.total)}. </>}{resources?.processCount ?? 0} main chat processes. Cards show resident RAM and CPU; child tools and the browser are separate.{resources?.at ? ` Sample: ${new Date(resources.at).toLocaleTimeString('en-US')}.` : ''}</p> : <p className="dialog-note">Recorded token usage is available here. Per-chat CPU and RAM samples are Windows only.</p>}
     {data ? <>
       <div className="usage-summary"><strong>{tokenNumber(data.totals.total)} recorded tokens</strong><span>Last 7 days · observed chats · {data.timezone}</span></div>
       <p className="dialog-note" role="status">{data.state.phase==='indexing'?`Preparing history: ${data.state.files}/${data.state.total} files. Totals are partial.`:data.state.phase==='error'?'The index encountered an error; totals are partial.':`${data.state.files}/${data.state.total} files checked.`} {data.state.skipped} segments skipped · {data.state.errors} errors · {data.state.unsupported} inherited histories excluded.</p>

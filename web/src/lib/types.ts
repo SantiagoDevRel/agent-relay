@@ -33,6 +33,8 @@ export interface Chat {
   runCommand: string;
   resumeCommand: string;
   canOpen: boolean;
+  terminalMode?: 'tmux';
+  attachCommand?: string;
   /** Process of an open chat; "Close chat" sends it back so the server can check it. */
   pid?: number;
   branch?: string;
@@ -96,7 +98,7 @@ export interface Snapshot {
   chats: Chat[];
   hiddenAutomated: number;
   windowsUpdate: { rebootPending: boolean };
-  server: { rssMb: number; mobile?: { ready: boolean; enabled: boolean; origin: string; auth: string } };
+  server: { rssMb: number; platform?: string; mobile?: { ready: boolean; enabled: boolean; origin: string; auth: string } };
   error?: string;
   resources?: LaptopResources;
   assistance?: Assistance;

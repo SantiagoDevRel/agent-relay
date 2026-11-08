@@ -1,6 +1,6 @@
 # Agent Relay
 
-A local Windows control center for Claude Code and Codex CLI chats. Project and activity radars show work in progress; Chats provides attention, search, transcripts and explicit chat actions. Delivery shows observed Git and GitHub Actions evidence. Orchestrator coordinates an existing builder/tester pair. Missions prepares and runs bounded work in isolated Git worktrees. Prompt Lab improves any prompt you paste into a clearer, testable version to copy into another chat.
+A local Windows/Linux control center for Claude Code and Codex CLI chats. Project and activity radars show work in progress; Chats provides attention, search, transcripts and explicit chat actions. Delivery shows observed Git and GitHub Actions evidence. Orchestrator coordinates an existing builder/tester pair. Missions prepares and runs bounded work in isolated Git worktrees. Prompt Lab improves any prompt you paste into a clearer, testable version to copy into another chat.
 
 The live collection loop runs no models and never modifies provider data. Planning, summaries, implementation and chat input occur only after an explicit user action. Relay is a private desktop application, not a hosted service.
 
@@ -8,7 +8,7 @@ The live collection loop runs no models and never modifies provider data. Planni
 
 This repository has a new independent history and contains the reviewed product source. Clone it into a separate directory. Keep private configuration and runtime data outside the checkout.
 
-Prerequisites: Windows, Node.js 22.13 or newer with built-in `node:sqlite`, npm and Git. Chrome and Windows Terminal are needed for the app window and native chat actions. Install Claude Code or Codex separately and log in with an existing supported account if you want collection or managed execution. No provider API key is required by Relay.
+Prerequisites: Windows or Linux, Node.js 22.13 or newer with built-in `node:sqlite`, npm and Git. Chrome and Windows Terminal are needed for the app window and native chat actions. Install Claude Code or Codex separately and log in with an existing supported account if you want collection or managed execution. No provider API key is required by Relay.
 
 ```powershell
 git clone https://github.com/SantiagoDevRel/agent-relay.git
@@ -23,6 +23,84 @@ node server/server.mjs
 Open `http://127.0.0.1:4848`. Use `npm.cmd start` to also open the app window. `npm` works in other shells; `npm.cmd` avoids PowerShell script-policy issues. `npm ci` restores only the existing pinned dependencies. The server serves `dist/`, so rebuild after frontend changes. `npm.cmd run dev` starts Vite for frontend development; production behavior must be checked through the built server.
 
 ## Local configuration
+
+### Linux and tmux
+
+Linux runs the same loopback server without Windows Terminal, PowerShell,
+registry actions or desktop notifications. Cards provide a copyable `tmux attach`
+command; Conversation reads native Claude/Codex transcripts and sends guarded
+messages. Focus, close and analysis-terminal actions remain Windows only. Existing
+pair orchestration is read-only on Linux. Managed missions expose browser logs and
+chats without desktop terminal views.
+
+Build with the pinned lockfile (`npm ci --no-audit --no-fund`, then
+`npm run typecheck` and `npm run build`). Run `npm test` and the focused Linux
+acceptance suite:
+
+```bash
+node --no-warnings --test test/linux.test.mjs test/remote-access.test.mjs test/chat-control.test.mjs
+node server/server.mjs
+```
+
+The real-transport test requires an installed `tmux`; its absence fails the Linux
+test rather than silently skipping it. Windows skips only the Linux-specific
+process/discovery tests. Record full-suite platform failures separately; focused
+acceptance never waives them. The runtime needs Node built-ins and the built
+`dist/`, without `node_modules`.
+
+**Registration prerequisite:** this repository ships the shared tmux backend,
+not a chat-tab launcher. A compatible external launcher must register its own
+panes in `~/.claude/chat-tabs/` (override with `CHAT_TAB_STORE`). Each `<name>.json`
+contains `backend: "tmux"`, matching `name`, `lane` (`claude` or `codex`), `window`
+(tmux session), `pane` (`%` ID), `windowId` (`@` ID), numeric `pid`, string `started`
+(`/proc` start ticks), and optional `socket` (tmux `-L` name). Use owner-only
+directories and files. Unregistered or ambiguous sessions stay read-only.
+
+Matching requires Claude's PID/start-time native session record or Codex's
+PID-bound logs database with an event newer than process start. Folder/title
+similarity, transcript handles and old resume arguments never grant delivery.
+The pane/window/session and process start are rechecked, and the provider composer
+must be visibly idle and empty. Messages remain in private 0700 directories/0600
+files. Relay submits one literal file-reference line, sends Enter once and never
+retries uncertain delivery or accepts terminal slash commands. Discovery never
+modifies provider files.
+
+`deploy/agent-relay.service` is an **uninstalled** user-unit template for a checkout
+at `~/agent-relay` and workspace at `~/Projects`. Review both paths and
+`/usr/bin/node` before installing it. Copy only after checking the built frontend:
+
+```bash
+test -r "$HOME/agent-relay/dist/index.html"
+/usr/bin/node --version
+install -d -m 700 "$HOME/.config/systemd/user"
+# Inspect an existing unit first; do not overwrite another installation.
+test ! -e "$HOME/.config/systemd/user/agent-relay.service" && install -m 600 deploy/agent-relay.service "$HOME/.config/systemd/user/agent-relay.service"
+systemd-analyze --user verify "$HOME/.config/systemd/user/agent-relay.service"
+systemctl --user daemon-reload
+systemctl --user start agent-relay.service
+curl --fail http://127.0.0.1:4848/api/ping
+ss -ltn 'sport = :4848'
+```
+
+The template uses `Restart=on-failure`, `UMask=0077`, no `--open`, and loopback
+only. Installing/enabling it is a separate owner action; this change does neither.
+
+Private phone access still requires separately authorized Tailscale enrollment
+and Serve setup. A tagged serving node requires the exact owner login configured
+locally; it cannot infer an owner from its own tags:
+
+```bash
+CHATS_MOBILE_OWNER_LOGIN='<exact-owner-login>' node scripts/enable-mobile.mjs --check
+# Only after owner authorization:
+CHATS_MOBILE_OWNER_LOGIN='<exact-owner-login>' node scripts/enable-mobile.mjs --enable
+```
+
+The owner is stored only in the private app-data `mobile.json` (0600), never Git.
+Check is read-only. Enable refuses unrelated Serve configuration, never enables
+Funnel, and verifies the existing Host/HTTPS/owner/Origin/run-token gates.
+Serve identity describes the requesting device: an untagged owner device can
+access a tagged server; a tagged requester without user identity is rejected.
+Regression fixtures do not certify actual phone connectivity or tailnet policy.
 
 Public defaults use `~/Projects`, generic topic examples and Ollama on `http://127.0.0.1:11434`. They contain no owner's paths, project names or internal endpoints. Configure your own workspace before using project selectors.
 
@@ -185,7 +263,7 @@ $env:CHATS_TEST_WAIT_MS = '120000'
 node --no-warnings --test --test-concurrency=2 "test/*.test.mjs"
 ```
 
-Tests use isolated homes, fake providers, hidden consoles and independent Git fixtures. They do not certify live provider inference, actual Windows toast visibility, mobile connectivity, installed app pinning or a GitHub production deployment. The desktop Windows features are not certified on Linux/macOS.
+Tests use isolated homes, fake providers, hidden consoles and independent Git fixtures. They do not certify live provider inference, actual Windows toast visibility, mobile connectivity, installed app pinning or a GitHub production deployment. The desktop Windows features are not certified on Linux/macOS. Linux acceptance uses a private tmux server and fake providers; actual provider login and phone connectivity need separate owner checks.
 
 ## License and attribution
 

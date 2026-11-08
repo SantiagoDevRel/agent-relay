@@ -116,8 +116,8 @@ function MissionChatDialog({ job, taskId, connected, onClose, onNotify }: { job:
   </dialog>, document.body);
 }
 
-function MissionProgress({ job, busy, connected, onAction, onRetry, onTerminal, onChat, onExtend }: {
-  job: Mission; busy: boolean; connected: boolean;
+function MissionProgress({ job, busy, connected, desktop = true, onAction, onRetry, onTerminal, onChat, onExtend }: {
+  job: Mission; busy: boolean; connected: boolean; desktop?: boolean;
   onAction: (id: string, action: 'start' | 'pause' | 'resume' | 'stop' | 'apply') => void;
   onRetry: (id: string, taskId: string) => void; onTerminal: (id: string, taskId: string) => void; onChat: (id: string, taskId: string) => void;
   onExtend: (id: string, minutes: number, taskId?: string) => void;
@@ -154,7 +154,7 @@ function MissionProgress({ job, busy, connected, onAction, onRetry, onTerminal, 
       <p className="mission-meta">{task.dependsOn?.length ? `Waiting for: ${task.dependsOn.map(id => titles.get(id) || id).join(' · ')}` : 'No dependencies'}</p>
       <div className="mission-actions">
         <Button disabled={disabled || (!task.sessionHandle && task.status === 'pending')} title={!task.sessionHandle && task.status === 'pending' ? 'The conversation appears when the agent starts its task.' : undefined} onClick={() => onChat(job.id, task.id)}><MessageSquare size={14} />View conversation</Button>
-        <Button disabled={disabled} onClick={() => onTerminal(job.id, task.id)}><Terminal size={14} />Open terminal</Button>
+        {desktop ? <Button disabled={disabled} onClick={() => onTerminal(job.id, task.id)}><Terminal size={14} />Open terminal</Button> : <span className="dialog-note">Desktop terminal: Windows only. Use View chat.</span>}
         {task.status === 'attention' && !CLOSED.has(job.status) ? <Button disabled={disabled} onClick={() => onRetry(job.id, task.id)}><RefreshCw size={14} />Retry within its limits</Button> : null}
       </div>
       {task.status === 'attention' && job.status !== 'applied' && job.status !== 'stopped' ? <DeadlineExtension taskId={task.id} disabled={disabled} onExtend={(minutes, taskId) => onExtend(job.id, minutes, taskId)} /> : null}
@@ -173,6 +173,7 @@ export function MissionPanel({ snapshot, connected, onNotify, page = false, acti
   const [busy, setBusy] = useState(''), [error, setError] = useState('');
   const [planning, setPlanning] = useState(false);
   const [terminalViews, setTerminalViews] = useState(true);
+  const desktop = !snapshot.server.platform || snapshot.server.platform === 'win32';
   const [chat, setChat] = useState<{ id: string; taskId: string } | null>(null);
   const jobs = snapshot.missions?.jobs ?? [];
   const expanded = page || (open ?? jobs.some(job => !CLOSED.has(job.status)));
@@ -199,7 +200,7 @@ export function MissionPanel({ snapshot, connected, onNotify, page = false, acti
     if (planning || busy || unavailable) return;
     setPlanning(true); setError('');
     try {
-      const result = await planMission({ project: project.trim(), title: title.trim(), goal: goal.trim(), provider, model, effort, limits, terminalViews });
+      const result = await planMission({ project: project.trim(), title: title.trim(), goal: goal.trim(), provider, model, effort, limits, terminalViews: desktop && terminalViews });
       setContract(JSON.stringify(result.spec, null, 2));
       onNotify('Plan prepared. Review the tasks and checks before starting.', 'info');
     } catch (cause) { setError(errorMessage(cause)); }
@@ -222,7 +223,7 @@ export function MissionPanel({ snapshot, connected, onNotify, page = false, acti
     {expanded ? <div className="mission-body" id="mission-body">
       <p>Describe what you want to build. The orchestrator splits the work, connects dependencies, and verifies each task before integration.</p>
       {error || snapshot.missions?.error || unavailable ? <p className="assistant-warning" role="alert">{error || snapshot.missions?.error || 'Missions are unavailable on this connection.'}</p> : null}
-      {[...jobs].reverse().map(job => <MissionProgress key={job.id} job={job} busy={Boolean(busy)} connected={!unavailable} onAction={(id, action) => run(action, () => missionAction(id, action), action === 'pause' ? 'New agents paused. Active turns may finish.' : action === 'stop' ? 'Mission stopped. Its work and chats are kept.' : action === 'apply' ? 'Changes integrated and verified in the project.' : 'Mission updated.')} onRetry={(id, taskId) => run('retry', () => retryMissionTask(id, taskId), 'Task ready to retry within the limits.')} onTerminal={(id, taskId) => run('terminal', () => openMissionTerminal(id, taskId), 'Tracking terminal opened. Reading progress uses no turns.')} onChat={(id, taskId) => setChat({ id, taskId })} onExtend={(id, minutes, taskId) => run('extend', () => extendMission(id, { minutes, ...(taskId ? { taskId } : {}) }), 'Deadline extended. Continue the mission or retry the task when you choose.')} />)}
+      {[...jobs].reverse().map(job => <MissionProgress key={job.id} job={job} desktop={desktop} busy={Boolean(busy)} connected={!unavailable} onAction={(id, action) => run(action, () => missionAction(id, action), action === 'pause' ? 'New agents paused. Active turns may finish.' : action === 'stop' ? 'Mission stopped. Its work and chats are kept.' : action === 'apply' ? 'Changes integrated and verified in the project.' : 'Mission updated.')} onRetry={(id, taskId) => run('retry', () => retryMissionTask(id, taskId), 'Task ready to retry within the limits.')} onTerminal={(id, taskId) => run('terminal', () => openMissionTerminal(id, taskId), 'Tracking terminal opened. Reading progress uses no turns.')} onChat={(id, taskId) => setChat({ id, taskId })} onExtend={(id, minutes, taskId) => run('extend', () => extendMission(id, { minutes, ...(taskId ? { taskId } : {}) }), 'Deadline extended. Continue the mission or retry the task when you choose.')} />)}
       <details className="mission-new" open={jobs.length === 0 || Boolean(contract)}><summary>New mission</summary>
         <ol className="flow-steps" aria-label="Mission setup"><li><span>1</span>Describe the goal</li><li><span>2</span>Prepare a plan</li><li aria-current={contract ? 'step' : undefined}><span>3</span>Review and start</li></ol>
         <Segmented label="How to define the mission" value={mode} options={[{ value: 'goal', label: 'Describe the goal' }, { value: 'json', label: 'JSON contract' }]} onChange={setMode} disabled={Boolean(busy) || planning} />
@@ -239,7 +240,7 @@ export function MissionPanel({ snapshot, connected, onNotify, page = false, acti
             <label>Minutes per task<input type="number" required min={1} max={720} value={limits.taskMinutes} onChange={event => updateLimit('taskMinutes', event.target.value)} /><span className="dialog-note">When time expires, work is kept so you can extend the deadline and continue.</span></label>
             <label>Minutes per mission<input type="number" required min={5} max={10080} value={limits.missionMinutes} onChange={event => updateLimit('missionMinutes', event.target.value)} /><span className="dialog-note">Total time for tasks and verification. Work is kept when the deadline expires.</span></label>
           </div><p className="dialog-note">A bounded queue keeps available agents busy without opening every chat at once. Native delegation is disabled. Limits apply to chats managed by Relay.</p></details>
-          <label className="mission-terminal-option"><input type="checkbox" checked={terminalViews} onChange={event => setTerminalViews(event.target.checked)} /><span>Open chats in tabs of the same window</span></label>
+          {desktop ? <label className="mission-terminal-option"><input type="checkbox" checked={terminalViews} onChange={event => setTerminalViews(event.target.checked)} /><span>Open chats in tabs of the same window</span></label> : <p className="dialog-note">Desktop terminal tabs are Windows only. View progress and chat here.</p>}
           <p className="dialog-note">Tabs show live conversations when each task starts. Send a message when the agent is waiting. Reading them uses no turns.</p>
           <p className="dialog-note">Preparing a plan opens one read-only chat and uses the model’s usual quota. Opening this panel or waiting does not run models.</p>
           <Button type="submit" className="mission-primary" disabled={!modelSelectionReady(catalog, modelSelection) || snapshot.missions?.planning || project.trim().length === 0 || title.trim().length === 0 || goal.trim().length < 10}><Network size={15} />{planning || snapshot.missions?.planning ? 'Preparing plan…' : 'Prepare plan'}</Button>

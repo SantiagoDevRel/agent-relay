@@ -62,6 +62,13 @@ require('node:module').syncBuiltinESMExports();
       const post = (id) => fetch(`${BASE}/api/open`, { method: 'POST',
         headers: { Origin: BASE, 'Content-Type': 'application/json', 'X-Chats-Token': token }, body: JSON.stringify({ id }) });
       const responses = await Promise.all([post(ids[0]), post(ids[0])]);
+      if (process.platform === 'linux') {
+        assert.deepEqual(responses.map((r) => r.status), [409, 409], 'Linux refuses desktop launches, including simultaneous requests');
+        for (const response of responses) assert.match((await response.json()).error, /tmux attach/);
+        assert.equal((await post(ids[1])).status, 409, 'Linux also refuses a different closed chat');
+        assert.equal(fs.existsSync(marker), false, 'Linux must not attempt a Windows Terminal launch');
+        return;
+      }
       assert.deepEqual(responses.map((r) => r.status).sort(), [200, 409], 'only one launch is accepted before collection catches up');
       assert.equal(fs.readFileSync(marker, 'utf8').trim().split('\n').length, 1);
       fs.writeFileSync(fail, 'fail the next launch');

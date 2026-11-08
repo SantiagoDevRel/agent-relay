@@ -53,11 +53,11 @@ export class ChatControl {
     this.pending.add(id);
     try {
       const enrolled = await this.enroll(chat), requestId = crypto.randomUUID(), folder = path.join(this.artifacts, requestId);
-      fs.mkdirSync(folder, { recursive: true });
+      fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
       const file = path.join(folder, 'user-message.md'), receipt = path.join(folder, 'message.json');
-      fs.writeFileSync(file, `# Message from the user\n\n${text}\n`, { flag: 'wx' });
+      fs.writeFileSync(file, `# Message from the user\n\n${text}\n`, { flag: 'wx', mode: 0o600 });
       const record = { id: requestId, chatId: id, createdAt: Date.now(), status: 'submitting' };
-      fs.writeFileSync(receipt, JSON.stringify(record));
+      fs.writeFileSync(receipt, JSON.stringify(record), { mode: 0o600 });
       // Re-read server-owned chat metadata after enrollment, before console delivery.
       const current = this.chat(id);
       if (this.leased(id)) throw fail('The chat just joined an active cycle. The message was not sent.');

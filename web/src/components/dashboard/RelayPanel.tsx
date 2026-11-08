@@ -39,12 +39,13 @@ export function RelayPanel({ snapshot, onNotify, connected, page = false, active
   const eligible = snapshot.chats.filter(chat => chat.alive && !chat.automated && (chat.state === 'working' || chat.state === 'waiting'));
   const selected = builderId !== testerId && eligible.some(chat => chat.id === builderId) && eligible.some(chat => chat.id === testerId);
   const unavailable = !snapshot.relays || Boolean(snapshot.relays.error) || !connected;
+  const desktop = !snapshot.server.platform || snapshot.server.platform === 'win32';
   useEffect(() => {
-    if (!(page || open) || !pageActive || !connected) return;
+    if (!desktop || !(page || open) || !pageActive || !connected) return;
     const controller = new AbortController();
     getMissionCatalog(controller.signal).then(value => { if (!controller.signal.aborted) { setCatalog(value); setCatalogError(''); } }).catch(cause => { if (!controller.signal.aborted) setCatalogError(cause instanceof ApiError ? cause.detail || cause.code : 'Could not load models for preparing the request.'); });
     return () => controller.abort();
-  }, [page, open, pageActive, connected]);
+  }, [page, open, pageActive, connected, desktop]);
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try { await startRelay({ builderId, testerId, goal, acceptance, maxRounds, minutes }); setOpen(true); onNotify('Cycle created. It will wait for both chats to finish their turns.', 'info'); }
@@ -57,6 +58,7 @@ export function RelayPanel({ snapshot, onNotify, connected, page = false, active
     catch { setError('Could not stop future handoffs. Check the connection and retry.'); }
     finally { setBusy(false); }
   }
+  if (!desktop) return <section className="panel page-panel"><header className="page-panel-heading"><h2>Orchestrator</h2><p className="dialog-note">Pair delivery is read-only on Linux. Open each chat’s Conversation to read and send messages, or attach to tmux in the VM.</p></header>{jobs.map(job => <RelayProgress key={job.id} job={job} busy onStop={() => {}} />)}</section>;
   return <section className={`panel relay-panel ${page ? 'page-panel' : ''}`}>
     {page ? <header className="page-panel-heading"><h2><GitPullRequestArrow size={18} aria-hidden="true" />Orchestrator</h2><p className="dialog-note">Two existing conversations · implementation and review</p></header> : <button type="button" className="insights-toggle relay-toggle" aria-expanded={open} aria-controls="relay-body" onClick={() => setOpen(!open)}><span><GitPullRequestArrow size={18} aria-hidden="true" /><strong>Orchestrate chats</strong></span><span>{active ? `${labels[active.status]} · ${active.turn === 'builder' ? 'Implementation' : 'Review'}` : 'Only when you start it'} · {open ? 'Hide' : 'Open'}</span></button>}
     {(page || open) && <div id="relay-body" className="relay-body">

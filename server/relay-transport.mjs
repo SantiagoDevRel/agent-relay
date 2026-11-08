@@ -6,8 +6,11 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {processIdentity} from './system.mjs';
 import {sessionOf} from './claude.mjs';
+import {LinuxChats} from './linux-chats.mjs';
+const linux = process.platform === 'linux' ? new LinuxChats() : null;
 const run=promisify(execFile),script=fileURLToPath(new URL('./relay-input.ps1',import.meta.url));
 export async function enrollChat(chat){
+ if(linux)return linux.enroll(chat);
  if(!chat?.alive||!chat.pid||chat.automated||!chat.file)throw Error('chat unavailable');
  const identity=await processIdentity(chat.pid);
  if(identity?.image!==chat.tool+'.exe')throw Error('process changed');
@@ -19,6 +22,12 @@ export async function enrollChat(chat){
 }
 async function submitInput(chat,enrolled,folder,handoffId,text){
  if(chat.id!==enrolled.id||chat.pid!==enrolled.pid||chat.state!=='waiting')throw Error('chat busy or changed');
+ if(linux){
+  if(text.startsWith('/'))throw Error('Terminal commands are unavailable in Linux Conversation');
+  const result=linux.send(chat,enrolled,text);
+  fs.writeFileSync(path.join(folder,handoffId+'-transport.json'),JSON.stringify(result),{flag:'wx',mode:0o600});
+  return result;
+ }
  const current=await enrollChat(chat);
  if(current.created!==enrolled.created)throw Error('process changed');
  if(chat.tool==='claude'&&sessionOf(chat.pid)?.status!=='idle')throw Error('chat busy');

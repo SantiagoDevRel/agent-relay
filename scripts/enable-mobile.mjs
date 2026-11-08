@@ -15,11 +15,14 @@ function parseJson(stdout) {
   try { const data = JSON.parse(stdout); if (object(data)) return data; } catch {}
   throw Error('Local Tailscale state could not be verified.');
 }
-export function deriveMobileConfig(status, port) {
-  if (status.BackendState !== 'Running' || !status.Self || status.Self.Tags?.length) throw Error('Tailscale must be connected with your account, without tags.');
+export function deriveMobileConfig(status, port, configuredOwner) {
+  if (status.BackendState !== 'Running' || !status.Self) throw Error('Tailscale must be connected.');
+  // Serve identifies the requester, even when this server node is tagged.
+  // Tagged servers have no user owner to infer: require a local explicit login.
+  if (status.Self.Tags?.length && !configuredOwner) throw Error('A tagged server needs a locally configured owner login.');
   const uid = status.Self.UserID;
-  if ((typeof uid !== 'number' && typeof uid !== 'string') || !Object.hasOwn(status.User || {}, String(uid))) throw Error('The owner of this device could not be identified.');
-  const ownerLogin = status.User[String(uid)]?.LoginName;
+  if (!configuredOwner && ((typeof uid !== 'number' && typeof uid !== 'string') || !Object.hasOwn(status.User || {}, String(uid)))) throw Error('The owner of this device could not be identified.');
+  const ownerLogin = configuredOwner || status.User[String(uid)]?.LoginName;
   const dns = status.Self.DNSName;
   if (typeof dns !== 'string') throw Error('The private domain of this device could not be verified.');
   return validateMobileConfig({version: 1, enabled: true, origin: `https://${dns.replace(/\.$/, '')}`, ownerLogin, backendPort: port, createdAt: Date.now()}, port);
@@ -66,16 +69,18 @@ async function verifyGate(request, port, mobile) {
 }
 
 export async function enableMobile({port = Number(process.env.CHATS_PORT || 4848), file = mobileConfigPath(),
-  tailscalePath = TAILSCALE, execImpl = exec, requestImpl = localRequest, enable = true} = {}) {
+  tailscalePath = TAILSCALE, execImpl = exec, requestImpl = localRequest, enable = true,
+  ownerLogin = process.env.CHATS_MOBILE_OWNER_LOGIN} = {}) {
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw Error('Invalid port.');
   if (process.env.AI_RELAY_MANAGED === '1') throw Error('A worker cannot enable mobile access.');
   const call = async args => {
     try { return await execImpl(tailscalePath, args, {encoding: 'utf8', windowsHide: true, shell: false, timeout: 20_000, maxBuffer: 1024 * 1024}); }
     catch (error) { const clean = Error('Tailscale did not complete the local operation.'); clean.code = error.code; throw clean; }
   };
-  const mobile = deriveMobileConfig(parseJson((await call(['status', '--json'])).stdout), port);
-  const initial = parseJson((await call(['serve', 'status', '--json'])).stdout);
   const saved = readMobileConfig(file, port);
+  const status = parseJson((await call(['status', '--json'])).stdout);
+  const mobile = deriveMobileConfig(status, port, ownerLogin || (status.Self?.Tags?.length ? saved?.ownerLogin : undefined));
+  const initial = parseJson((await call(['serve', 'status', '--json'])).stdout);
   if (fs.existsSync(file) && (!saved || saved.origin !== mobile.origin || saved.ownerLogin !== mobile.ownerLogin)) throw Error('The existing mobile configuration needs review; it was not replaced.');
   const owned = !!saved && ownsServe(initial, mobile);
   if (!empty(initial) && !owned) throw Error('An unrelated Serve configuration already exists; it was not modified.');

@@ -4,7 +4,7 @@ import type { Chat } from './types';
 const RANK: Partial<Record<Chat['state'], number>> = { cut: 0, unknown: 1, waiting: 2 };
 
 export function chatNextStep(chat: Chat) {
-  if (chat.state === 'waiting') return 'Your turn. Read the conversation, then reply there or use Go to chat.';
+  if (chat.state === 'waiting') return chat.terminalMode === 'tmux' ? 'Your turn. Open Conversation to reply, or attach to the tmux session below.' : 'Your turn. Read the conversation, then reply there or use Go to chat.';
   if (chat.state === 'cut') return chat.canOpen ? 'The turn was interrupted. Review the saved conversation, then use Open to resume.' : 'The turn was interrupted. Review the saved conversation and the resume command below.';
   if (chat.state === 'unknown') return 'Status is not verified. Read the saved conversation before deciding what to do.';
   if (chat.state === 'closed') return chat.canOpen ? 'The chat is closed. Review its conversation or use Open to continue.' : 'The chat is closed. Its saved conversation is available to review.';
