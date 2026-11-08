@@ -1,6 +1,6 @@
 # Agent Relay — agent guide
 
-Agent Relay is a local Windows control center for installed Claude Code and Codex CLI chats. Collection is read-only and runs no inference. Plans, managed workers and input to existing chats require an explicit user action. The public code must work without any private parent repository.
+Agent Relay is a local Windows/Linux control center for installed Claude Code and Codex CLI chats. Collection is read-only and runs no inference. Plans, managed workers and input to existing chats require an explicit user action. The public code must work without any private parent repository.
 
 ## HARD publication gate
 
@@ -15,7 +15,7 @@ Agent Relay is a local Windows control center for installed Claude Code and Code
 
 ## Commands
 
-Requires Windows, Node 22.13+ with `node:sqlite`, npm, Git and Chrome/Windows Terminal for native actions. Use `npm.cmd` if PowerShell execution policy blocks `npm.ps1`.
+Requires Node 22.13+ with `node:sqlite`, npm, Git and Chrome/Windows Terminal for Windows native actions. Linux discovery/input additionally require tmux and compatible external chat-tab registrations (see README). Use `npm.cmd` if PowerShell execution policy blocks `npm.ps1`.
 
 ```powershell
 npm.cmd ci --no-audit --no-fund
@@ -53,4 +53,4 @@ Ask the developer for their workspace directory, supported installed CLI login, 
 
 ## Source map
 
-`server/` contains collection, authenticated APIs, persistence, mission/pair execution and native Windows helpers. `web/src/` is the React client; `web/public/` contains the offline shell metadata and attributed icons. `tools/` contains the two-provider private transport and commit guards. `scripts/` contains installation, private mobile setup, icon generators and publication checks. `evals/` contains Relay Evals (extraction, redaction, metrics, labels, report, benchmark and CLI). `test/` contains isolated regression fixtures. `skills/` contains the optional Relay planning/orchestration guides. See [NOTICE.md](NOTICE.md) for third-party attribution.
+`server/` contains collection, authenticated APIs, persistence, mission/pair execution and native platform helpers. `server/linux-chats.mjs` binds native sessions to registered tmux panes; `server/chat-tab-tmux.mjs` provides identity-checked transport. `deploy/agent-relay.service` is an uninstalled Linux user-unit template. `web/src/` is the React client; `web/public/` contains the offline shell metadata and attributed icons. `tools/` contains the two-provider private transport and commit guards. `scripts/` contains installation, private mobile setup, icon generators and publication checks. `evals/` contains Relay Evals (extraction, redaction, metrics, labels, report, benchmark and CLI). `test/` contains isolated regression fixtures. `skills/` contains the optional Relay planning/orchestration guides. See [NOTICE.md](NOTICE.md) for third-party attribution.

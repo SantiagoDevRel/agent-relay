@@ -29,7 +29,7 @@ export function ServicesBar({ snapshot, favorites, onFavorites, onHistory, onDgx
     <div className="services-actions">
       <Button aria-pressed={favorites} onClick={onFavorites}><Star size={15} />Favorites ({snapshot.chats.filter(c => c.favorite).length})</Button>
       <Button onClick={onHistory}><Search size={15} />Search history</Button>
-      <Button aria-pressed={enabled} disabled={busy} onClick={() => notifications()}>{enabled ? <Bell size={15} /> : <BellOff size={15} />}Notifications: {enabled ? 'on' : 'off'}</Button>
+      {snapshot.server.platform && snapshot.server.platform !== 'win32' ? <span className="dialog-note">Desktop notifications: Windows only</span> : <Button aria-pressed={enabled} disabled={busy} onClick={() => notifications()}>{enabled ? <Bell size={15} /> : <BellOff size={15} />}Notifications: {enabled ? 'on' : 'off'}</Button>}
       <Button onClick={onDgx}><Cpu size={15} />DGX: {error ? 'status error' : dgxLabel(status?.dgx)}{status?.queue.length ? ` · ${status.queue.length} queued` : ''}</Button>
     </div>
     {enabled && <p className="dialog-note services-note">Notifications when a turn finishes or an active chat is lost. Windows can silence them with Do not disturb. <Button disabled={busy} onClick={() => notifications(true)}><Bell size={15} />Test Windows notification</Button></p>}

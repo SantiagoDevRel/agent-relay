@@ -1,0 +1,18 @@
+[Unit]
+Description=Agent Relay private dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/agent-relay
+Environment=CHATS_PORT=4848
+Environment=CHATS_WORKSPACE_ROOT=%h/Projects
+ExecStartPre=/usr/bin/test -r %h/agent-relay/dist/index.html
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server/server.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

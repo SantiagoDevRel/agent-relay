@@ -26,13 +26,14 @@ import { HistoryIndex } from './history.mjs';
 import { Services } from './services.mjs';
 import { Resources } from './resources.mjs';
 import { advice } from './usage.mjs';
-import { RelayCoordinator } from './relay.mjs';
+import { RelayCoordinator, validateRelay } from './relay.mjs';
 import { MissionManager } from './missions.mjs';
 import { MissionPlanner } from './mission-planner.mjs';
 import { PromptRefiner } from './prompt-refiner.mjs';
 import { collectProjects, browseProjectFolders } from './projects.mjs';
 import { ChatControl } from './chat-control.mjs';
 import { RemoteAccess } from './remote-access.mjs';
+import { LinuxChats } from './linux-chats.mjs';
 import { providerCatalog, openMissionTerminal, openEvalsAnalysisTerminal } from './mission-runner.mjs';
 import { MissionBudget } from './mission-budget.mjs';
 import { DeliveryCollector } from './delivery.mjs';
@@ -41,6 +42,8 @@ import {
 } from './system.mjs';
 
 const PORT = Number(process.env.CHATS_PORT || 4848);
+const WINDOWS = process.platform === 'win32';
+const linuxChats = process.platform === 'linux' ? new LinuxChats() : null;
 const HOST = '127.0.0.1';
 const URL_BASE = `http://${HOST}:${PORT}`;
 const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
@@ -64,7 +67,7 @@ const delivery = new DeliveryCollector({ onChange: () => {
   snapshot = { ...snapshot, chats, delivery: delivery.publicState() };
   broadcast();
 } });
-let notificationStatus = { enabled: preferences.data.notifications, error: '', setting: 'unknown' };
+let notificationStatus = { enabled: WINDOWS && preferences.data.notifications, error: '', setting: WINDOWS ? 'unknown' : 'Windows only' };
 let notificationJob = false;
 const notificationQueue = new Map();
 let activeSummary = null;
@@ -123,6 +126,7 @@ function missionState() {
   return { jobs: (missions?.publicState() || []).map(job => ({ ...job, orchestrator: planner?.details(job.planId) || null })), error: missionError, planning: Boolean(planner?.busy) };
 }
 function synchronizeMissionTerminals() {
+  if (!WINDOWS) return;
   for (const job of missionState().jobs) {
     if (!job.terminalViews || job.status !== 'running') continue;
     const members = [...(!job.terminalWindow ? ['orchestrator'] : []), ...job.tasks.filter(task => task.startedAt).map(task => task.id)];
@@ -173,7 +177,7 @@ function buildSnapshot(now, chats, hidden, error) {
     chats,
     hiddenAutomated: hidden,
     windowsUpdate: { rebootPending: rebootFlag },
-    server: { rssMb: rssMb(), mobile: remoteAccess.publicState() },
+    server: { rssMb: rssMb(), mobile: remoteAccess.publicState(), platform: process.platform },
     resources: resources.publicState(),
     assistance: preferences.data.assistance,
     delivery: delivery.publicState(),
@@ -195,13 +199,13 @@ async function cycle() {
     let claude = { chats: [], hidden: 0 };
     let codex = { chats: [], hidden: 0 };
     try {
-      claude = collectClaude(opts);
+      claude = linuxChats ? linuxChats.collect(opts) : collectClaude(opts);
     } catch (err) {
       errors.push('Could not read Claude chats.');
       log('claude collector:', err.stack || err.message);
     }
     try {
-      codex = collectCodex(opts);
+      codex = linuxChats ? { chats: [], hidden: 0 } : collectCodex(opts);
     } catch (err) {
       closeCodexDbs();
       errors.push('Could not read Codex chats.');
@@ -209,7 +213,7 @@ async function cycle() {
     }
     const all = [...claude.chats, ...codex.chats];
     delivery.refresh(all, now);
-    resources.refresh(now);
+    if (WINDOWS) resources.refresh(now);
     if (now - usageUpdated > 30000) {
       usageUpdated = now;
       usageIndex.request('update', { sources: all.filter(c=>c.file).map(({ id,tool,file,folder,automated,alive })=>({id,tool,file,folder,automated:Boolean(automated),alive})) })
@@ -220,7 +224,7 @@ async function cycle() {
     }
     targets = new Map(all.map((c) => [c.id, c]));
     // Each explicit job has finite turns/deadline; no inference runs while waiting.
-    void relay?.tick().catch(err => { relayError = 'Could not save orchestration state.'; log('relay:', err.message); });
+    if (WINDOWS) void relay?.tick().catch(err => { relayError = 'Could not save orchestration state.'; log('relay:', err.message); });
     void missions?.tick().catch(err => { missionError = 'Could not save mission state.'; log('missions:', err.message); });
     // Paths and process identity stay server-side; the UI has cdCommand and the pid.
     const roles = new Map();
@@ -330,6 +334,7 @@ const opening = new Map(); // Reserve until the collector sees the process, at m
 async function openChat(id) {
   const chat = targets.get(id);
   if (!chat || !UUID.test(id)) return [404, { error: 'not found' }];
+  if (!WINDOWS) return [409, { error: 'Use the card’s tmux attach command, or resume it with chat-tab in the VM.' }];
   if (chat.alive) return [409, { error: 'already open' }];
   if (opening.has(id) && Date.now() - opening.get(id) < 30_000) return [409, { error: 'already opening' }];
   if (!chat.cwd || /[;"]/.test(chat.cwd) || !fs.existsSync(chat.cwd)) return [422, { error: 'folder missing' }];
@@ -356,6 +361,7 @@ let focusing = false;
 async function focusChat(id) {
   const chat = targets.get(id);
   if (!chat || !UUID.test(id)) return [404, { error: 'not found' }];
+  if (!WINDOWS) return [409, { error: 'Use the card’s tmux attach command in the VM.' }];
   if (!chat.alive) return [409, { error: 'not open' }];
   if (focusing) return [429, { error: 'busy' }];
   focusing = true;
@@ -387,6 +393,7 @@ const closing = new Set();
 async function closeChat(id, pid) {
   const chat = targets.get(id);
   if (!chat || !UUID.test(id)) return [404, { error: 'not found' }];
+  if (!WINDOWS) return [409, { error: 'Close this chat with chat-tab in the VM.' }];
   if (!chat.alive || !chat.pid) return [409, { error: 'not open' }];
   if (pid !== chat.pid) return [409, { error: 'changed' }];
   if (closing.has(id)) return [429, { error: 'busy' }];
@@ -560,6 +567,14 @@ async function handleApi(req, res, url) {
     return send(res, 400, { error: 'bad request' });
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return send(res, 400, { error: 'bad request' });
+  if (!WINDOWS && url.pathname === '/api/relay/start' && !validateRelay(body)) return send(res, 400, { error: 'invalid relay' });
+  if (!WINDOWS && url.pathname === '/api/missions/terminal') {
+    const job = missionState().jobs.find(job => job.id === body.id);
+    if (!job || (body.taskId !== 'orchestrator' && !job.tasks.some(task => task.id === body.taskId))) return send(res, 404, { error: 'Mission or task not found.' });
+  }
+  if (!WINDOWS && ['/api/relay/start', '/api/windows-update', '/api/missions/terminal'].includes(url.pathname)) {
+    return send(res, 409, { error: 'This terminal or desktop action is available on Windows only. Use Conversation or chat-tab in the VM.' });
+  }
   // A paused snapshot must agree with the persisted controls. Resume before
   // changing collection settings; otherwise a successful click looks ignored.
   if (paused && (url.pathname === '/api/window' || url.pathname === '/api/automated' || url.pathname === '/api/assistance'
@@ -573,8 +588,10 @@ async function handleApi(req, res, url) {
       if (paused) return send(res, 409, { error: 'Resume Agent Relay before opening an analysis.' });
       try {
         const { startAnalysis } = await import('./evals-api.mjs');
-        return send(res, 200, await startAnalysis(body.id, { provider: body.provider ?? 'claude', launch: ({ prompt, provider, model }) => openEvalsAnalysisTerminal({ prompt, provider, model,
-          cwd: fileURLToPath(new URL('..', import.meta.url)), cliPath: fileURLToPath(new URL('../evals/cli.mjs', import.meta.url)) }) }));
+        return send(res, 200, await startAnalysis(body.id, { provider: body.provider ?? 'claude', launch: ({ prompt, provider, model }) => {
+          if (!WINDOWS) throw Object.assign(Error('Opening an analysis terminal is Windows only.'), { status: 409 });
+          return openEvalsAnalysisTerminal({ prompt, provider, model, cwd: fileURLToPath(new URL('..', import.meta.url)), cliPath: fileURLToPath(new URL('../evals/cli.mjs', import.meta.url)) });
+        } }));
       } catch (error) { return send(res, error.status || 409, { error: error.message }); }
     }
     case '/api/prompts/refine': {
@@ -666,6 +683,7 @@ async function handleApi(req, res, url) {
     }
     case '/api/notifications': {
       if (typeof body.enabled !== 'boolean') return send(res, 400, { error: 'enabled must be boolean' });
+      if (!WINDOWS) return send(res, 409, { error: 'Desktop notifications are Windows only.' });
       let nextStatus = { ...notificationStatus, enabled: body.enabled, error: '' };
       if (body.enabled) {
         try {
@@ -805,6 +823,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 function openWindow() {
+  if (!WINDOWS) { log('Open Agent Relay through the configured private HTTPS URL.'); return; }
   const candidates = [
     path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google\\Chrome\\Application\\chrome.exe'),
     path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google\\Chrome\\Application\\chrome.exe'),

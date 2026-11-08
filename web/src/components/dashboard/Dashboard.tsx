@@ -68,7 +68,9 @@ function countByState(chats: Chat[]) {
 const matches = (chat: Chat, query: string) =>
   `${chat.title} ${chat.folder} ${chat.topic} ${chat.lastLine} ${chat.worktree ?? ''} ${chat.note ?? ''}`.toLocaleLowerCase('en-US').includes(query);
 
-function PowerOn() {
+function PowerOn({ platform }: { platform?: string }) {
+  const desktop = platform ? platform === 'win32' : /Win/i.test(navigator.platform) && location.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(location.hostname);
+  if (!desktop) return <p className="dialog-note">Start Agent Relay {platform === 'linux' ? 'in the VM' : 'on its host'}, then reload.</p>;
   return <a className="action-button power-on" href={POWER_ON_URL}><Power size={15} />Turn on</a>;
 }
 
@@ -82,6 +84,7 @@ function HeroSkeleton() {
 
 export function Dashboard() {
   const { snapshot, connection } = useSnapshot();
+  const platform = snapshot?.server.platform;
   const now = useNow(15_000);
   const canInstall = useCanInstall();
   const [page, setPage] = useState<Page>(pageFromHash);
@@ -208,11 +211,11 @@ export function Dashboard() {
           <span className="empty-glyph"><CircleOff size={28} /></span>
           <h2>Dashboard off</h2>
           <p>Turn it on again when you need it.</p>
-          <PowerOn />
+          <PowerOn platform={platform} />
         </div> : <>
           {confirmQuit && <div className="notice notice-error" role="alert"><Power size={18} aria-hidden="true" /><p>Turn off Agent Relay? You can turn it on again from this window or its icon.</p><div className="notice-actions"><Button className="danger-button" disabled={busy} onClick={() => run(async () => { await sendControl('quit'); setConfirmQuit(false); })}><Power size={15} />Turn off</Button><Button onClick={() => setConfirmQuit(false)}>Cancel</Button></div></div>}
           {snapshot?.windowsUpdate.rebootPending && <aside className="notice notice-warning"><AlertTriangle size={19} aria-hidden="true" /><p>Windows has a pending restart. <span>An automatic restart will close open chats.</span></p><Button disabled={busy} onClick={() => run(openWindowsUpdate)}>Open Windows Update<ExternalLink size={14} /></Button></aside>}
-          {connection === 'disconnected' && snapshot && <div className="notice notice-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>Connection to the server lost. <span>The data below may be outdated.</span></p><PowerOn /></div>}
+          {connection === 'disconnected' && snapshot && <div className="notice notice-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>Connection to the server lost. <span>The data below may be outdated.</span></p><PowerOn platform={platform} /></div>}
           {snapshot?.error && <div className="notice notice-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>{snapshot.error}</p></div>}
           {snapshot ? <>
             <section id="page-projects" className="dashboard-page" role="tabpanel" aria-labelledby="tab-projects" hidden={page !== 'projects'}>
@@ -235,13 +238,13 @@ export function Dashboard() {
             <section id="page-orchestrator" className="dashboard-page" role="tabpanel" aria-labelledby="tab-orchestrator" hidden={page !== 'orchestrator'}><RelayPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'orchestrator'} /></section>
             <section id="page-missions" className="dashboard-page" role="tabpanel" aria-labelledby="tab-missions" hidden={page !== 'missions'}><MissionPanel snapshot={snapshot} onNotify={notify} connected={connection === 'live'} page active={page === 'missions'} /></section>
             <section id="page-prompt-lab" className="dashboard-page" role="tabpanel" aria-labelledby="tab-prompt-lab" hidden={page !== 'prompt-lab'}><PromptLabPanel active={page === 'prompt-lab'} connected={connection === 'live'} /></section>
-            <section id="page-evals" className="dashboard-page" role="tabpanel" aria-labelledby="tab-evals" hidden={page !== 'evals'}><EvalsPanel active={page === 'evals'} /></section>
+            <section id="page-evals" className="dashboard-page" role="tabpanel" aria-labelledby="tab-evals" hidden={page !== 'evals'}><EvalsPanel active={page === 'evals'} desktop={!snapshot.server.platform || snapshot.server.platform === 'win32'} /></section>
             <section id="page-dgx" className="dashboard-page" role="tabpanel" aria-labelledby="tab-dgx" hidden={page !== 'dgx'}><DgxPanel active={page === 'dgx'} /></section>
           </> : connection === 'disconnected' ? <div className="empty-state" role="alert">
             <span className="empty-glyph"><AlertTriangle size={28} /></span>
             <h2>Server disconnected</h2>
             <p>The dashboard is off or not responding.</p>
-            <PowerOn />
+            <PowerOn platform={platform} />
           </div> : <HeroSkeleton />}
         </>}
       </main>

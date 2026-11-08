@@ -152,9 +152,9 @@ export function SummaryDialog({ chat, now, onClose, onGo, onOpen }: {
       {facts ? <Facts facts={facts} now={now} /> : factsError && <p className="card-feedback tone-error" role="alert">{factsError}</p>}
 
       <footer className="dialog-actions">
-        {chat.alive
+        {chat.terminalMode !== 'tmux' && (chat.alive
           ? <Button className="open-button" onClick={() => { close(); onGo(); }}><ArrowUpRight size={14} />Go to chat</Button>
-          : chat.canOpen && <Button className="open-button" onClick={() => { close(); onOpen(); }}><ExternalLink size={14} />Open</Button>}
+          : chat.canOpen && <Button className="open-button" onClick={() => { close(); onOpen(); }}><ExternalLink size={14} />Open</Button>)}
         <Button onClick={close}>Done</Button>
       </footer>
     </div>

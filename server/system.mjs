@@ -126,6 +126,7 @@ export class ProcessWatch {
   }
 
   async verify() {
+    if (process.platform !== 'win32') return;
     if (this.pending) return this.pending;
     this.pending = (async () => {
       const { ok, stdout } = await run('powershell.exe', [
@@ -175,6 +176,7 @@ const REBOOT_KEYS = [
 ];
 
 export async function rebootPending() {
+  if (process.platform !== 'win32') return false;
   const results = await Promise.all(REBOOT_KEYS.map((key) => run('reg', ['query', key])));
   return results.some((r) => r.ok);
 }
