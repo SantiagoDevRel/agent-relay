@@ -24,6 +24,70 @@ test('Linux composer guard refuses drafts, wrapped input, busy/permission menus 
   }
 });
 
+const codexRows = [
+  'Codex finished the requested changes.',
+  ...Array(14).fill(''),
+  'Worked for 17m 26s • 23:58',
+  '',
+  'Summary: verified the changes and tests.',
+  '',
+  '',
+  '› Ask Codex to do anything',
+  '',
+  '  GPT-6.1-Sol high · ~/project/.claude/worktree…',
+  '  ← for agents · ? for shortcuts',
+];
+
+test('Codex accepts the current 24-row empty composer with its model status and agents footer', () => {
+  assert.equal(codexRows.length, 24);
+  assert.equal(emptyLinuxInput('codex', codexRows.join('\n'), [20, 2, 24, 0]), true);
+});
+
+test('Codex keeps older footers and accepts an empty prompt or a status without effort', () => {
+  assert.equal(emptyLinuxInput('codex', '› Ask Codex to do anything\n? for shortcuts\n', [0, 2, 2, 0]), true);
+  assert.equal(emptyLinuxInput('codex', '› \n? for shortcuts\n', [0, 2, 2, 0]), true);
+  const rows = [...codexRows];
+  rows[20] = '› ';
+  rows[22] = '  GPT-6.1-Sol · /home/user/project';
+  assert.equal(emptyLinuxInput('codex', rows.join('\n'), [20, 2, 24, 0]), true);
+});
+
+test('Codex refuses draft text and continuation lines even when the cursor precedes them', () => {
+  const rows = [...codexRows];
+  rows[20] = '› unfinished draft';
+  assert.equal(emptyLinuxInput('codex', rows.join('\n'), [20, 2, 24, 0]), false);
+  rows[20] = codexRows[20];
+  rows[21] = 'second draft line';
+  for (const y of [20, 21]) assert.equal(emptyLinuxInput('codex', rows.join('\n'), [y, 2, 24, 0]), false);
+  rows[21] = 'GPT-6.1-Sol high · /a/status-shaped-draft';
+  rows[22] = 'draft below the status-shaped line';
+  assert.equal(emptyLinuxInput('codex', rows.join('\n'), [20, 2, 24, 0]), false);
+  rows[21] = '';
+  rows[22] = 'GPT-6.1-Sol high · relative/path';
+  assert.equal(emptyLinuxInput('codex', rows.join('\n'), [20, 2, 24, 0]), false);
+});
+
+test('Codex refuses a cursor on its footer, status or trailing footer blank row', () => {
+  for (const y of [21, 22, 23]) assert.equal(emptyLinuxInput('codex', codexRows.join('\n'), [y, 2, 24, 0]), false);
+});
+
+test('Codex refuses busy, approval, trust, permission and copy-mode screens with the current footer', () => {
+  for (const marker of ['esc to interrupt', 'Approve this command', 'trust this folder', 'allow Codex to work', 'permission required', 'select an option']) {
+    const rows = [...codexRows];
+    rows[19] = marker;
+    assert.equal(emptyLinuxInput('codex', rows.join('\n'), [20, 2, 24, 0]), false, marker);
+  }
+  assert.equal(emptyLinuxInput('codex', codexRows.join('\n'), [20, 2, 24, 1]), false);
+});
+
+test('Claude does not adopt Codex footer matching or status stripping', () => {
+  const rows = [...codexRows];
+  rows[19] = 'bypass permissions on';
+  assert.equal(emptyLinuxInput('claude', rows.join('\n'), [20, 2, 24, 0]), false);
+  rows[23] = '? for shortcuts';
+  assert.equal(emptyLinuxInput('claude', rows.join('\n'), [20, 2, 24, 0]), false);
+});
+
 test('old resume argv cannot substitute for a current native session record', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-native-record-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
