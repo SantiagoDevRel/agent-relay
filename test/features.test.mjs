@@ -66,6 +66,15 @@ test('DGX status preserves real verdict and never guesses missing load', () => {
   assert.equal(parseDgx('Ollama online').verdict, 'UNKNOWN');
 });
 
+test('DGX disk uses measured bytes and preserves reserved space and unknown values', () => {
+  const disk = parseDgx('DISK_STAT_BEGIN\n1000 400 500 45% /\n').disk;
+  assert.deepEqual(disk, { total: 1000, used: 400, available: 500, reserved: 100, percent: 45 });
+  assert.equal(parseDgx('disk unavailable').disk, null);
+  assert.equal(parseDgx('DISK_STAT_BEGIN\n0 0 0 0% /\n').disk, null);
+  assert.equal(parseDgx('DISK_STAT_BEGIN\n100 90 20 90% /\n').disk, null);
+  assert.equal(parseDgx('DISK_STAT_BEGIN\n100 0 100 0% /\n').disk.percent, 0);
+});
+
 test('DGX highlights parse measured utilization and only live service evidence', () => {
   const data = parseDgx(`GPU: 92% util · 73°C
 RAM unificada: 46/121 GB usada · 75 GB disponible

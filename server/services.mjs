@@ -14,10 +14,15 @@ export function parseDgx(text) {
   if (comfy === 'active') services.push('ComfyUI');
   if (/pid\s*\d+[^\n]*whisper[^\n]*python|pid\s*\d+[^\n]*python[^\n]*whisper/i.test(text)) services.push('Whisper');
   const samples = text.split('CPU_STAT_BEGIN')[1]?.match(/^cpu\s+[\d ]+$/gm);
+  const diskLine = text.split('DISK_STAT_BEGIN')[1]?.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+\/\s*$/m);
+  const [total, used, available, percent] = diskLine ? diskLine.slice(1).map(Number) : [];
+  const disk = [total, used, available, percent].every(Number.isSafeInteger) && total > 0 && used + available <= total && percent <= 100
+    ? { total, used, available, reserved: total - used - available, percent } : null;
   return { verdict: text.match(/VERDICT:\s*(FREE|LIGHT|BUSY)/)?.[1] || 'UNKNOWN',
     percent: gpu ? Number(gpu[1]) : null, temperature: gpu ? Number(gpu[2]) : null,
     cpuPercent: samples?.length === 2 ? cpuPercent(samples[0], samples[1]) : null,
     ram: ram ? { used: Number(ram[1]), total: Number(ram[2]) } : null,
+    disk,
     services, servicesKnown: Boolean(comfy), detail: text.trim().slice(0, 2500) };
 }
 export function cpuPercent(before, after) {
@@ -50,7 +55,7 @@ export class Services {
       json('/api/tags'), json('/api/ps'),
       // Fake/custom Ollama servers used by tests must not probe the real DGX.
       !tool ? Promise.reject(new Error('No optional GPU probe configured'))
-        : exec(process.execPath, [tool, 'run', "spark-gpu && printf '\\nCPU_STAT_BEGIN\\n' && head -n 1 /proc/stat && sleep 0.25 && head -n 1 /proc/stat"],
+        : exec(process.execPath, [tool, 'run', "spark-gpu && printf '\\nCPU_STAT_BEGIN\\n' && head -n 1 /proc/stat && sleep 0.25 && head -n 1 /proc/stat && printf '\\nDISK_STAT_BEGIN\\n' && LC_ALL=C df -B1 --output=size,used,avail,pcent,target / | tail -n 1"],
           { env: { ...process.env, DGX_RUN: '1', DGX_TIMEOUT: '12' }, windowsHide: true, timeout: 15_000, maxBuffer: 32 * 1024 }),
     ]);
     this.cached = { at: Date.now(), available: tags.status === 'fulfilled', model: SUMMARY_MODEL,

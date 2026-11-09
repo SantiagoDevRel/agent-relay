@@ -191,7 +191,7 @@ export interface HistoryResult { results: HistoryHit[]; total: number; state: Hi
 export interface ServiceStatus {
   dgx: { at: number; available: boolean; installed: boolean; model: string; loadedKnown: boolean; loaded: { name: string; sizeVram: number }[];
     gpu: { verdict: 'FREE' | 'LIGHT' | 'BUSY' | 'UNKNOWN'; detail: string; percent: number | null; temperature: number | null;
-      cpuPercent: number | null; ram: { used: number; total: number } | null; services: string[]; servicesKnown: boolean } };
+      cpuPercent: number | null; ram: { used: number; total: number } | null; disk: { total: number; used: number; available: number; reserved: number; percent: number } | null; services: string[]; servicesKnown: boolean } };
   queue: { id: string; title: string; status: 'running' | 'queued'; position: number }[];
   history: HistoryState;
 }
