@@ -77,8 +77,9 @@ export function createTmuxBackend({ env = process.env,
     check(); assertIdentity(tab);
     // Keep physical rows: joined wraps cannot be compared with tmux cursor_y.
     const screen = forTab(tab, ['capture-pane', '-p', '-t', tab.pane]);
+    const styled = forTab(tab, ['capture-pane', '-e', '-p', '-t', tab.pane]);
     const cursor = forTab(tab, ['display-message', '-p', '-t', tab.pane, '#{cursor_y}\t#{cursor_x}\t#{pane_height}\t#{pane_in_mode}']).trim().split('\t').map(Number);
-    if (!empty(screen, cursor)) throw Error('Input draft or prompt unavailable; no text sent');
+    if (!empty(screen, cursor, styled)) throw Error('Input draft or prompt unavailable; no text sent');
     check(); assertIdentity(tab);
     forTab(tab, ['send-keys', '-t', tab.pane, '-l', '--', text]);
     sleep(1600);

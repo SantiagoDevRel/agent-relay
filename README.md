@@ -60,7 +60,12 @@ Matching requires Claude's PID/start-time native session record or Codex's
 PID-bound logs database with an event newer than process start. Folder/title
 similarity, transcript handles and old resume arguments never grant delivery.
 The pane/window/session and process start are rechecked, and the provider composer
-must be visibly idle and empty. Messages remain in private 0700 directories/0600
+must be visibly idle and empty. A suggestion also counts as empty when matching
+plain and styled captures show every visible composer character after the prompt
+marker drawn dim (SGR 2). Normal draft text, missing styles and mismatched capture
+frames remain refused. Status checks ignore trailing blank padding, so a fresh
+chat can place its composer near the top of a tall pane; busy, approval and
+copy-mode screens remain refused. Messages remain in private 0700 directories/0600
 files. Relay submits one literal file-reference line, sends Enter once and never
 retries uncertain delivery or accepts terminal slash commands. Discovery never
 modifies provider files.
