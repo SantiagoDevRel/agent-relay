@@ -440,9 +440,9 @@ h3 { font: 600 15px/1.45 var(--font-sans); overflow-wrap: anywhere; }
 .dgx-on { flex-shrink: 0; white-space: nowrap; color: var(--malachite); font: 600 12px/1.3 var(--font-display); }
 .dgx-raw summary { cursor: pointer; color: var(--muted); }
 .dgx-raw pre { margin-top: 10px; }
-/* Fixed N=3 metrics and N=2 activity groups: complete rows on both sides. */
+/* Fixed N=4 metrics and N=2 activity groups: complete rows on both sides. */
 @container (min-width: 660px) {
-  .dgx-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .dgx-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dgx-active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .history-panel > .search-field { margin: 0; width: 100%; max-width: none; }

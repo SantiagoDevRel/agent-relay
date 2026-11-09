@@ -23,6 +23,9 @@ export function DgxPanel({ active }: { active: boolean }) {
     load(); return () => { stopped = true; clearTimeout(timer); };
   }, [active]);
   const dgx = status?.dgx;
+  const disk = dgx?.gpu.disk;
+  const gib = (bytes: number) => (bytes / 1073741824).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
   return <section className="panel dgx-page" aria-label="DGX status">
     <h2 className="dgx-title"><Cpu size={18} aria-hidden="true" />DGX · {error ? 'status error' : dgxLabel(dgx)}</h2>
     {error && <p role="alert">{error}</p>}
@@ -32,6 +35,7 @@ export function DgxPanel({ active }: { active: boolean }) {
         <div className="dgx-metric"><dt>GPU</dt><dd className={dgx.gpu.percent == null ? 'is-unverified' : undefined}>{dgx.gpu.percent == null ? 'Unverified' : `${dgx.gpu.percent}%`}</dd><p>{dgx.gpu.temperature == null ? 'Temperature unverified' : `${dgx.gpu.temperature} °C · utilization`}</p></div>
         <div className="dgx-metric"><dt>CPU</dt><dd className={dgx.gpu.cpuPercent == null ? 'is-unverified' : undefined}>{dgx.gpu.cpuPercent == null ? 'Unverified' : `${dgx.gpu.cpuPercent}%`}</dd><p>Total usage · 250 ms sample</p></div>
         <div className="dgx-metric"><dt>Unified RAM</dt><dd className={!dgx.gpu.ram ? 'is-unverified' : undefined}>{dgx.gpu.ram ? `${Math.round(dgx.gpu.ram.used / dgx.gpu.ram.total * 100)}%` : 'Unverified'}</dd><p>{dgx.gpu.ram ? `${dgx.gpu.ram.used} / ${dgx.gpu.ram.total} GB used` : 'Memory unverified'}</p></div>
+        <div className="dgx-metric"><dt>Root disk</dt><dd className={!disk ? 'is-unverified' : undefined}>{disk ? `${gib(disk.available)} GiB free` : 'Unverified'}</dd><p>{disk ? `${gib(disk.used)} / ${gib(disk.total)} GiB used · ${gib(disk.reserved)} GiB reserved` : 'Disk space unverified'}</p></div>
       </dl>
       <div className="dgx-active">
         <div><h2>Active services</h2>{dgx.gpu.services?.length ? <ul>{dgx.gpu.services.map(name => <li key={name}><span className="dgx-on">ON</span>{name}</li>)}</ul> : <p className="dialog-note">{dgx.gpu.servicesKnown ? 'No active ComfyUI or Whisper detected.' : 'Services unverified.'}</p>}</div>
