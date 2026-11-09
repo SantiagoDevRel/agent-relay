@@ -470,7 +470,7 @@ import {LinuxChats} from ${JSON.stringify(module)};
 import {stopClaudeWatcher} from ${JSON.stringify(claudeModule)};
 const home=process.env.HOME,store=path.join(home,'.claude/chat-tabs');fs.mkdirSync(store,{recursive:true});
 const processes=[{pid:101,ppid:0,tty:'11',started:'10'}, {pid:201,ppid:101,tty:'11',started:'30',tool:'claude',createdMs:Date.now()-10000}, {pid:102,ppid:0,tty:'12',started:'20'}, {pid:202,ppid:102,tty:'12',started:'40',tool:'codex',createdMs:Date.now()-10000}];
-for(const [name,lane,pid,started,pane,windowId] of [['claude','claude',101,'10','%1','@1'],['codex','codex',102,'20','%2','@2']])fs.writeFileSync(path.join(store,name+'.json'),JSON.stringify({name,lane,pid,started,pane,windowId,window:'ai-chats',backend:'tmux'}));
+for(const [name,lane,pid,started,pane,windowId] of [['claude','claude',101,'10','%1','@1'],['codex','codex',102,'20','%2','@2']])fs.writeFileSync(path.join(store,name+'.json'),JSON.stringify({name,lane,pid,started,pane,windowId,window:'ai-chats',backend:'tmux'}),{mode:0o600});
 fs.mkdirSync(path.join(home,'.claude/sessions'),{recursive:true});
 fs.writeFileSync(path.join(home,'.claude/sessions/201.json'),JSON.stringify({pid:201,sessionId:${JSON.stringify(id)},procStart:'30',status:'idle',kind:'interactive',cwd:'/home/owner/project'}));
 const db=new DatabaseSync(path.join(home,'.codex/logs_1.sqlite'));
