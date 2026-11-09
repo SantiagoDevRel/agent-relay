@@ -57,9 +57,18 @@ export function emptyLinuxInput(tool, screen, [y, x, height, mode]) {
   for (let i = 0; i < before.length; i++) if (/^\s*[❯›»]/u.test(before[i])) at = i;
   if (at < Math.max(0, y - 12)) return false;
   const after = visible.slice(at + 1);
-  const end = after.findIndex(line => /^\s*(?:[─━╌┄-]{5,}|bypass permissions\b|\? for shortcuts\b)/i.test(line));
+  const end = after.findIndex(line => /^\s*(?:[─━╌┄-]{5,}|bypass permissions\b|\? for shortcuts\b)/i.test(line) ||
+    (tool === 'codex' && /\? for shortcuts\b/.test(line)));
   if (end < 0 || y > at + end) return false;
-  const draft = [before[at].replace(/^\s*[❯›»]/u, ''), ...after.slice(0, end)].join('\n').trim();
+  const draftRows = after.slice(0, end);
+  // Codex draws blank padding and model/path status immediately above its shortcuts.
+  // Strip only this trailing footer block, and never accept a cursor inside it.
+  if (tool === 'codex') {
+    while (draftRows.length && (/^\s*$/.test(draftRows.at(-1)) ||
+      /^\s*[a-z0-9][a-z0-9._-]*(?:\s+(?:none|minimal|low|medium|high|xhigh|max|ultra))?\s+·\s+[~/].*$/i.test(draftRows.at(-1)))) draftRows.pop();
+    if (y > at + draftRows.length) return false;
+  }
+  const draft = [before[at].replace(/^\s*[❯›»]/u, ''), ...draftRows].join('\n').trim();
   return draft === '' || (tool === 'codex' && draft === 'Ask Codex to do anything');
 }
 
