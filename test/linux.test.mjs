@@ -14,6 +14,92 @@ const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const linuxOnly = { skip: process.platform !== 'linux' };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const screen = prompt => `${prompt}\n bypass permissions on\n\n`;
+const claudeSuggestion = '\x1b[39m❯\u00a0\x1b[2mTry\x1b[0m \x1b[2m"create\x1b[0m \x1b[2ma\x1b[0m \x1b[2mutil\x1b[0m \x1b[2mlogging.py\x1b[0m \x1b[2mthat..."';
+const plainSuggestion = '❯\u00a0Try "create a util logging.py that..."';
+
+function topComposer({ tool = 'claude', empty = false, draft = false, warning = '', status = true, padding = '' } = {}) {
+  const rows = Array(24).fill(padding);
+  rows.splice(0, 9, tool === 'claude' ? 'Claude Code v2.1.319' : 'Codex', '~/project', '', '', warning,
+    '────────────────────────────────', tool === 'claude' ? '❯\u00a0Try "fix lint errors"' : '› A new Codex suggestion',
+    '────────────────────────────────', status ? tool === 'claude' ?
+      '  ⏵⏵ bypass permissions on (shift+tab to cycle)   …/rc' : '  ← for agents · ? for shortcuts' : '');
+  const marker = tool === 'claude' ? '❯' : '›';
+  if (empty || draft) rows[6] = marker + (draft ? ' unfinished draft' : ' ');
+  const styled = [...rows];
+  if (!empty && !draft) styled[6] = tool === 'claude' ?
+    '\x1b[39m❯\u00a0\x1b[2mTry\x1b[0m \x1b[2m"fix\x1b[0m \x1b[2mlint\x1b[0m \x1b[2merrors"\x1b[0m' :
+    '› \x1b[2mA new Codex suggestion\x1b[0m';
+  if (status && tool === 'claude') styled[8] = rows[8].replace('…/rc',
+    '\x1b]8;;https://example.invalid/rc\x1b\\…/rc\x1b]8;;\x1b\\');
+  return { plain: rows.join('\n') + '\n', styled: styled.join('\n') + '\n', cursor: [6, 2, 24, 0] };
+}
+
+test('top-aligned 24-row composers accept dim suggestions and empty input above blank padding', () => {
+  for (const tool of ['claude', 'codex']) for (const empty of [false, true]) for (const padding of ['', ' \t\u00a0']) {
+    const pane = topComposer({ tool, empty, padding });
+    assert.equal(pane.plain.split('\n').length - 1, 24);
+    assert.equal(emptyLinuxInput(tool, pane.plain, pane.cursor, pane.styled), true, `${tool}: empty=${empty}, padding=${JSON.stringify(padding)}`);
+    if (empty) assert.equal(emptyLinuxInput(tool, pane.plain, pane.cursor), true);
+  }
+});
+
+test('top-aligned composers refuse drafts, busy or approval screens, missing status and unstyled suggestions', () => {
+  for (const tool of ['claude', 'codex']) {
+    for (const options of [{ draft: true }, { warning: 'esc to interrupt' }, { warning: 'Approve this command' },
+      { warning: 'trust this folder' }, { warning: 'permission required' }, { status: false }]) {
+      const pane = topComposer({ tool, ...options });
+      assert.equal(emptyLinuxInput(tool, pane.plain, pane.cursor, pane.styled), false, `${tool}: ${JSON.stringify(options)}`);
+    }
+    const pane = topComposer({ tool });
+    assert.equal(emptyLinuxInput(tool, pane.plain, pane.cursor), false);
+  }
+});
+
+test('dim placeholders accept fresh Claude, Codex and finished-turn suggestions', () => {
+  const fresh = prompt => ['Claude Code v2.1.319', '~/project', '', '────────────────────────────────', prompt,
+    '────────────────────────────────', ' bypass permissions on'].join('\n');
+  assert.equal(emptyLinuxInput('claude', fresh(plainSuggestion), [4, 2, 7, 0], fresh(claudeSuggestion + '\x1b[0m')), true);
+  assert.equal(emptyLinuxInput('claude', 'Finished.\n' + screen('❯ Suggested next step'), [1, 2, 4, 0],
+    'Finished.\n' + screen('❯ \x1b[2mSuggested next step\x1b[0m')), true);
+  assert.equal(emptyLinuxInput('codex', '› Ask Codex to do anything\n? for shortcuts\n', [0, 2, 2, 0],
+    '\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything\x1b[0m\n? for shortcuts\n'), true);
+  assert.equal(emptyLinuxInput('codex', '› A changed placeholder\n? for shortcuts\n', [0, 2, 2, 0],
+    '› \x1b[2mA changed placeholder\x1b[0m\n? for shortcuts\n'), true);
+  const styledCodex = [...codexRows];
+  styledCodex[20] = '\x1b[1m›\x1b[0m \x1b[2mAsk Codex to do anything\x1b[0m';
+  assert.equal(emptyLinuxInput('codex', codexRows.join('\n'), [20, 2, 24, 0], styledCodex.join('\n')), true);
+});
+
+test('dim placeholders refuse normal characters, reset intensity, missing styles and mismatched captures', () => {
+  for (const tool of ['claude', 'codex']) {
+    const full = prompt => tool === 'claude' ? screen(prompt) : `${prompt}\n? for shortcuts\n\n`;
+    const marker = tool === 'claude' ? '❯' : '›';
+    const plain = full(marker + ' suggestion');
+    assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0]), false);
+    for (const draft of ['suggestion', '\x1b[2msuggestio\x1b[22mn', '\x1b[2m\x1b[22msuggestion',
+      '\x1b[2m\x1b[0msuggestion', '\x1b[2m\x1b[msuggestion', '\x1b[38;2;2;2;2msuggestion',
+      '\x1b[2m\x1b[0;32msuggestion']) {
+      assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0], full(marker + ' ' + draft)), false, tool + ': ' + JSON.stringify(draft));
+    }
+    for (const changed of [full(marker + ' \x1b[2mchanged'), 'changed history\n' + full(marker + ' \x1b[2msuggestion'),
+      full(marker + ' \x1b[2msuggestion').replace('shortcuts', 'other shortcuts').replace('permissions', 'other permissions')]) {
+      assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0], changed), false);
+    }
+    const multiline = full(marker + ' suggestion\nsecond row');
+    assert.equal(emptyLinuxInput(tool, multiline, [0, 2, 4, 0], full(marker + ' \x1b[2msuggestion\x1b[0m\nsecond row')), false);
+    assert.equal(emptyLinuxInput(tool, multiline, [1, 2, 4, 0], full(marker + ' \x1b[2msuggestion\nsecond row\x1b[0m')), true);
+    assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0], full(marker + ' \x1b[2;38;2;22;0;0msuggestion\x1b[0m')), true);
+    assert.equal(emptyLinuxInput(tool, full(marker + '\u00a0suggestion 😀'), [0, 2, 3, 0],
+      full(marker + '\u00a0\x1b[2msuggestion 😀\x1b[0m')), true);
+    assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0],
+      full(marker + ' \x1b]0;title with 2m\x07\x1b[2msuggestion\x1b[0m\x1b[K')), true);
+    assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 0], full(marker + ' \x1b]0;2m\x07suggestion')), false);
+    for (const state of ['esc to interrupt', 'Approve this command', 'trust this folder', 'permission required', 'select an option']) {
+      assert.equal(emptyLinuxInput(tool, state + '\n' + plain, [1, 2, 4, 0], state + '\n' + full(marker + ' \x1b[2msuggestion')), false);
+    }
+    assert.equal(emptyLinuxInput(tool, plain, [0, 2, 3, 1], full(marker + ' \x1b[2msuggestion')), false);
+  }
+});
 test('Linux composer guard refuses drafts, wrapped input, busy/permission menus and shell prompts', () => {
   assert.equal(emptyLinuxInput('claude', screen('❯ '), [0, 2, 3, 0]), true);
   assert.equal(emptyLinuxInput('claude', 'Approved the revision.\n❯ \n bypass permissions on\n', [1, 2, 3, 0]), true);
@@ -96,6 +182,30 @@ test('old resume argv cannot substitute for a current native session record', t 
     createdMs: Date.now(), argv: [tool, '--resume', id] }), null);
 });
 
+test('guarded send passes matching physical styled rows before typing exactly once', () => {
+  const tab = { pane: '%7', pid: 123, started: '456', windowId: '@2', socket: 'own-test' };
+  const plain = '❯ suggestion\n bypass permissions on\n';
+  const styled = '❯ \x1b[2msuggestion\x1b[0m\n bypass permissions on\n';
+  const calls = [];
+  const backend = createTmuxBackend({ readStart: () => '456', sleep: () => {}, runner(file, argv) {
+    calls.push({ file, argv });
+    const a = argv.slice(2);
+    if (a[0] === 'capture-pane') return a.includes('-e') ? styled : plain;
+    if (a.at(-1) === '#{cursor_y}\t#{cursor_x}\t#{pane_height}\t#{pane_in_mode}') return '0\t2\t2\t0';
+    if (a[0] === 'display-message') return '%7\t123\t@2\n';
+    return '';
+  } });
+  let checks = 0;
+  assert.deepEqual(backend.sendGuarded(tab, 'hello', { check: () => checks++, empty: (screen, cursor, colors) => {
+    assert.equal(screen, plain); assert.deepEqual(cursor, [0, 2, 2, 0]); assert.equal(colors, styled); return true;
+  } }), { submitted: true, characters: 5 });
+  assert.equal(checks, 3);
+  assert.deepEqual(calls.filter(c => c.argv[2] === 'capture-pane').map(c => c.argv.slice(2)),
+    [['capture-pane', '-p', '-t', '%7'], ['capture-pane', '-e', '-p', '-t', '%7']]);
+  assert.deepEqual(calls.filter(c => c.argv[2] === 'send-keys').map(c => c.argv.slice(2)),
+    [['send-keys', '-t', '%7', '-l', '--', 'hello'], ['send-keys', '-t', '%7', 'Enter']]);
+});
+
 test('real private tmux transport delivers once and refuses drafts, unknown panes and stale pid identity', { ...linuxOnly, timeout: 30000 }, async t => {
   execFileSync('tmux', ['-V']); // A missing tmux is a failed prerequisite, never a skipped Linux test.
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-linux-'));
@@ -104,7 +214,7 @@ test('real private tmux transport delivers once and refuses drafts, unknown pane
   const backend = createTmuxBackend({ env: { CHAT_TAB_TMUX_SOCKET: socket } });
   const fixture = path.join(root, 'fake.mjs'), delivered = path.join(root, 'delivered.jsonl');
   fs.writeFileSync(fixture, `import fs from 'node:fs';
-const draw=()=>{const row=Math.max(1,(process.stdout.rows||24)-3);process.stdout.write('\\x1b[2J\\x1b['+row+';1H❯ \\n bypass permissions on\\n? for shortcuts\\x1b['+row+';3H');};
+const draw=()=>{const row=Math.max(1,(process.stdout.rows||24)-3);process.stdout.write('\\x1b[2J\\x1b['+row+';1H❯ \\x1b[2mTry "create a util logging.py that..."\\x1b[0m\\n bypass permissions on\\n? for shortcuts\\x1b['+row+';3H');};
 process.stdin.setRawMode(true);process.stdin.resume();let value='';draw();
 process.stdin.on('data',chunk=>{for(const c of chunk.toString()){if(c==='\\x15'){value='';draw();}else if(c==='\\r'||c==='\\n'){fs.appendFileSync(process.argv[2],JSON.stringify(value)+'\\n');value='';draw();}else{value+=c;process.stdout.write(c);}}});`);
   t.after(() => {

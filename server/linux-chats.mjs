@@ -43,13 +43,45 @@ export function linuxProcess(pid, proc = '/proc') {
   } catch { return null; }
 }
 
+// Track SGR intensity across physical rows; other terminal controls carry no text.
+function styledRows(screen) {
+  const rows = [{ text: '', dim: [] }];
+  let dim = false;
+  const tokens = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][\s\S]*?(?:\x07|\x1b\\)|[PX^_][\s\S]*?\x1b\\|[ -/]*[0-~])|[^\x1b]/gu;
+  for (const [token] of screen.replace(/\r/g, '').matchAll(tokens)) {
+    if (token.startsWith('\x1b')) {
+      if (/^\x1b\[[\d;:]*m$/.test(token)) {
+        const params = token.slice(2, -1).split(';');
+        for (let i = 0; i < params.length; i++) {
+          if (!/^\d*$/.test(params[i])) continue;
+          const code = Number(params[i]);
+          if (code === 0 || code === 22) dim = false;
+          else if (code === 2) dim = true;
+          // RGB/palette components are not independent SGR intensity codes.
+          else if ([38, 48, 58].includes(code)) {
+            if (params[i + 1] === '2') i += 4;
+            else if (params[i + 1] === '5') i += 2;
+          }
+        }
+      }
+    } else if (token === '\n') rows.push({ text: '', dim: [] });
+    else {
+      rows.at(-1).text += token;
+      rows.at(-1).dim.push(...Array(token.length).fill(dim));
+    }
+  }
+  if (rows.at(-1).text === '') rows.pop();
+  return rows;
+}
+
 // The cursor must be inside an empty provider composer, with its status drawn.
 // Check all continuation rows up to the cursor; never treat a shell prompt as input.
-export function emptyLinuxInput(tool, screen, [y, x, height, mode]) {
+export function emptyLinuxInput(tool, screen, [y, x, height, mode], styled) {
   if (![y, x, height, mode].every(Number.isInteger) || mode !== 0 || y < 0 || y >= height) return false;
   const rows = screen.replace(/\r/g, '').split('\n');
   if (rows.at(-1) === '') rows.pop();
-  const visible = rows.slice(-height), bottom = visible.slice(-14).join('\n');
+  const visible = rows.slice(-height), lastContent = visible.findLastIndex(line => /\S/u.test(line));
+  const bottom = visible.slice(0, lastContent + 1).slice(-14).join('\n');
   if (BUSY.test(bottom) || /trust this folder|allow Codex to work|permission required|select an option|^\s*(?:approve|approval)\s+(?:this (?:command|action)|once|for this session)\b/im.test(bottom)) return false;
   if (!(tool === 'claude' ? /bypass permissions/i : /\? for shortcuts|Ask Codex to do anything/).test(bottom)) return false;
   const before = visible.slice(0, y + 1);
@@ -69,7 +101,15 @@ export function emptyLinuxInput(tool, screen, [y, x, height, mode]) {
     if (y > at + draftRows.length) return false;
   }
   const draft = [before[at].replace(/^\s*[❯›»]/u, ''), ...draftRows].join('\n').trim();
-  return draft === '' || (tool === 'codex' && draft === 'Ask Codex to do anything');
+  if (draft === '' || (tool === 'codex' && draft === 'Ask Codex to do anything')) return true;
+  if (typeof styled !== 'string') return false;
+  const colors = styledRows(styled);
+  // The TUI may redraw between captures. Never infer emptiness from another frame.
+  if (colors.length !== rows.length || colors.some((row, i) => row.text !== rows[i])) return false;
+  const composer = colors.slice(-height).slice(at, at + 1 + draftRows.length);
+  const promptLength = before[at].match(/^\s*[❯›»]/u)[0].length;
+  return composer.every((row, i) => row.text.split('').every((char, column) =>
+    (i === 0 && column < promptLength) || /\s/u.test(char) || row.dim[column]));
 }
 
 function filesUnder(dir, depth = 0) {
@@ -190,7 +230,7 @@ export class LinuxChats {
       const p = chat.tool === 'claude' ? readTranscript(chat.file) : readRollout(chat.file);
       if (chat.tool === 'claude' ? !['assistant-text', 'user-interrupt'].includes(p.lastKind) : p.lastTask === 'started') throw Error('Chat busy or transcript state unavailable');
     };
-    return this.backend.sendGuarded(enrolled.tab, text, { check, empty: (screen, cursor) => emptyLinuxInput(chat.tool, screen, cursor) });
+    return this.backend.sendGuarded(enrolled.tab, text, { check, empty: (screen, cursor, styled) => emptyLinuxInput(chat.tool, screen, cursor, styled) });
   }
   collect(opts) {
     const processes = this.processes(), byPid = new Map(processes.filter(p => p.tool).map(p => [p.pid, p.tool + '.exe']));
