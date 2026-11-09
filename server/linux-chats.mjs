@@ -76,40 +76,57 @@ function styledRows(screen) {
 
 // The cursor must be inside an empty provider composer, with its status drawn.
 // Check all continuation rows up to the cursor; never treat a shell prompt as input.
-export function emptyLinuxInput(tool, screen, [y, x, height, mode], styled) {
-  if (![y, x, height, mode].every(Number.isInteger) || mode !== 0 || y < 0 || y >= height) return false;
+export function inspectLinuxInput(tool, screen, [y, x, height, mode] = [], styled) {
+  const result = reason => ({ empty: reason === 'empty' || reason === 'placeholder', reason });
+  if (Number.isInteger(mode) && mode !== 0) return result('copy-mode');
+  if (!['claude', 'codex'].includes(tool) || typeof screen !== 'string' ||
+    ![y, x, height, mode].every(Number.isInteger) || y < 0 || y >= height || x < 0) return result('no-composer');
   const rows = screen.replace(/\r/g, '').split('\n');
   if (rows.at(-1) === '') rows.pop();
   const visible = rows.slice(-height), lastContent = visible.findLastIndex(line => /\S/u.test(line));
   const bottom = visible.slice(0, lastContent + 1).slice(-14).join('\n');
-  if (BUSY.test(bottom) || /trust this folder|allow Codex to work|permission required|select an option|^\s*(?:approve|approval)\s+(?:this (?:command|action)|once|for this session)\b/im.test(bottom)) return false;
-  if (!(tool === 'claude' ? /bypass permissions/i : /\? for shortcuts|Ask Codex to do anything/).test(bottom)) return false;
+  if (BUSY.test(bottom)) return result('busy');
+  if (/trust this folder|allow Codex to work|permission required|select an option|^\s*(?:approve|approval)\s+(?:this (?:command|action)|once|for this session)\b|^\s*[❯›»]\s*\d+[.)]\s+\S/im.test(bottom)) return result('menu');
   const before = visible.slice(0, y + 1);
   let at = -1;
   for (let i = 0; i < before.length; i++) if (/^\s*[❯›»]/u.test(before[i])) at = i;
-  if (at < Math.max(0, y - 12)) return false;
+  if (at < Math.max(0, y - 12)) return result('no-composer');
   const after = visible.slice(at + 1);
-  const end = after.findIndex(line => /^\s*(?:[─━╌┄-]{5,}|bypass permissions\b|\? for shortcuts\b)/i.test(line) ||
-    (tool === 'codex' && /\? for shortcuts\b/.test(line)));
-  if (end < 0 || y > at + end) return false;
+  const modelPath = /^\s*[a-z0-9][a-z0-9._-]*(?:\s+(?:none|minimal|low|medium|high|xhigh|max|ultra))?\s+·\s+[~/].*$/i;
+  // Codex hides shortcuts while a draft is present; only a trailing model/path
+  // row can replace that cue, never a status-shaped line inside the draft.
+  const footer = tool === 'codex' ? after.findIndex((line, i) => modelPath.test(line) && after.slice(i + 1).every(row =>
+    /^\s*$/.test(row) || /^\s*(?:← for agents\s*·\s*)?\? for shortcuts\s*$/.test(row))) : -1;
+  const end = after.findIndex((line, i) => /^\s*(?:[─━╌┄-]{5,}|bypass permissions\b|accept edits on\b|plan mode on\b|\? for shortcuts\b)/i.test(line) ||
+    (tool === 'codex' && (/\? for shortcuts\b/.test(line) || i === footer)));
+  if (end < 0 || y > at + end) return result('no-composer');
+  const box = tool === 'claude' && /^\s*[─━]{5,}\s*$/u.test(visible[at - 1] || '') &&
+    /^\s*[─━]{5,}\s*$/u.test(after[end]);
+  const status = (tool === 'claude' ? /bypass permissions|\? for shortcuts|accept edits on|plan mode on/i :
+    /\? for shortcuts|Ask Codex to do anything/).test(bottom) || footer >= 0;
+  if (!status && !box) return result('no-composer');
   const draftRows = after.slice(0, end);
-  // Codex draws blank padding and model/path status immediately above its shortcuts.
+  // Codex draws blank padding and model/path status below its composer.
   // Strip only this trailing footer block, and never accept a cursor inside it.
   if (tool === 'codex') {
-    while (draftRows.length && (/^\s*$/.test(draftRows.at(-1)) ||
-      /^\s*[a-z0-9][a-z0-9._-]*(?:\s+(?:none|minimal|low|medium|high|xhigh|max|ultra))?\s+·\s+[~/].*$/i.test(draftRows.at(-1)))) draftRows.pop();
-    if (y > at + draftRows.length) return false;
+    while (draftRows.length && (/^\s*$/.test(draftRows.at(-1)) || modelPath.test(draftRows.at(-1)))) draftRows.pop();
+    if (y > at + draftRows.length) return result('no-composer');
   }
   const draft = [before[at].replace(/^\s*[❯›»]/u, ''), ...draftRows].join('\n').trim();
-  if (draft === '' || (tool === 'codex' && draft === 'Ask Codex to do anything')) return true;
-  if (typeof styled !== 'string') return false;
-  const colors = styledRows(styled);
+  const colors = typeof styled === 'string' ? styledRows(styled) : null;
   // The TUI may redraw between captures. Never infer emptiness from another frame.
-  if (colors.length !== rows.length || colors.some((row, i) => row.text !== rows[i])) return false;
+  if (colors && (colors.length !== rows.length || colors.some((row, i) => row.text !== rows[i]))) return result('frame-changed');
+  if (draft === '') return result('empty');
+  if (tool === 'codex' && draft === 'Ask Codex to do anything') return result('placeholder');
+  if (!colors) return result('no-style');
   const composer = colors.slice(-height).slice(at, at + 1 + draftRows.length);
   const promptLength = before[at].match(/^\s*[❯›»]/u)[0].length;
-  return composer.every((row, i) => row.text.split('').every((char, column) =>
-    (i === 0 && column < promptLength) || /\s/u.test(char) || row.dim[column]));
+  return result(composer.every((row, i) => row.text.split('').every((char, column) =>
+    (i === 0 && column < promptLength) || /\s/u.test(char) || row.dim[column])) ? 'placeholder' : 'draft');
+}
+
+export function emptyLinuxInput(tool, screen, cursor, styled) {
+  return inspectLinuxInput(tool, screen, cursor, styled).empty;
 }
 
 function filesUnder(dir, depth = 0) {
@@ -212,13 +229,13 @@ export class LinuxChats {
     return matches[0];
   }
   enroll(chat) {
-    if (!chat?.alive || chat.automated || chat.state !== 'waiting') throw Error('Chat busy or unavailable');
+    if (!chat?.alive || chat.automated || chat.state !== 'waiting') throw Object.assign(Error('Chat busy or unavailable'), { reason: 'busy' });
     const { tab, provider } = this.binding(chat);
     if (chat.pid !== provider.pid) throw Error('Process changed');
     if (chat.tool === 'claude') {
       try {
         const session = JSON.parse(fs.readFileSync(path.join(this.home, '.claude/sessions', provider.pid + '.json'), 'utf8'));
-        if (session.status !== 'idle') throw Error('Chat busy');
+        if (session.status !== 'idle') throw Object.assign(Error('Chat busy'), { reason: 'busy' });
       } catch (error) { if (error.code !== 'ENOENT') throw error; }
     }
     return { id: chat.id, pid: provider.pid, tool: chat.tool, created: provider.started, tab };
@@ -228,9 +245,9 @@ export class LinuxChats {
       const current = this.enroll(chat);
       if (JSON.stringify(current) !== JSON.stringify(enrolled)) throw Error('Process/session changed');
       const p = chat.tool === 'claude' ? readTranscript(chat.file) : readRollout(chat.file);
-      if (chat.tool === 'claude' ? !['assistant-text', 'user-interrupt'].includes(p.lastKind) : p.lastTask === 'started') throw Error('Chat busy or transcript state unavailable');
+      if (chat.tool === 'claude' ? !['assistant-text', 'user-interrupt'].includes(p.lastKind) : p.lastTask === 'started') throw Object.assign(Error('Chat busy or transcript state unavailable'), { reason: 'busy' });
     };
-    return this.backend.sendGuarded(enrolled.tab, text, { check, empty: (screen, cursor, styled) => emptyLinuxInput(chat.tool, screen, cursor, styled) });
+    return this.backend.sendGuarded(enrolled.tab, text, { check, empty: (screen, cursor, styled) => inspectLinuxInput(chat.tool, screen, cursor, styled) });
   }
   collect(opts) {
     const processes = this.processes(), byPid = new Map(processes.filter(p => p.tool).map(p => [p.pid, p.tool + '.exe']));

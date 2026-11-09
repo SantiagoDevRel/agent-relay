@@ -71,16 +71,52 @@ export function createTmuxBackend({ env = process.env,
   }
   // Relay supplies an identity/session guard. Unlike chat-tab's interactive send,
   // this path never retries Enter and never accepts a draft already in the TUI.
-  function sendGuarded(tab, text, { check, empty }) {
-    if (typeof check !== 'function' || typeof empty !== 'function') throw Error('Missing input guard');
-    if (!text || text.length > 4000 || /[\x00-\x1f\x7f]/.test(text) || /^\s*\//.test(text)) throw Error('Ordinary single-line text required');
-    check(); assertIdentity(tab);
+  function capture(tab) {
+    assertIdentity(tab);
     // Keep physical rows: joined wraps cannot be compared with tmux cursor_y.
     const screen = forTab(tab, ['capture-pane', '-p', '-t', tab.pane]);
     const styled = forTab(tab, ['capture-pane', '-e', '-p', '-t', tab.pane]);
     const cursor = forTab(tab, ['display-message', '-p', '-t', tab.pane, '#{cursor_y}\t#{cursor_x}\t#{pane_height}\t#{pane_in_mode}']).trim().split('\t').map(Number);
-    if (!empty(screen, cursor, styled)) throw Error('Input draft or prompt unavailable; no text sent');
-    check(); assertIdentity(tab);
+    return { screen, styled, cursor };
+  }
+  function sendGuarded(tab, text, { check, empty } = {}) {
+    try {
+      if (typeof check !== 'function' || typeof empty !== 'function') throw Error('Missing input guard');
+      if (!text || text.length > 4000 || /[\x00-\x1f\x7f]/.test(text) || /^\s*\//.test(text)) throw Error('Ordinary single-line text required');
+      check(); assertIdentity(tab);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const frame = capture(tab), inspected = empty(frame.screen, frame.cursor, frame.styled);
+        const guard = typeof inspected === 'boolean' ? { empty: inspected, reason: inspected ? 'empty' : 'draft' } : inspected;
+        if (guard?.empty) break;
+        if (guard?.reason === 'frame-changed' && attempt < 2) { sleep(250); check(); assertIdentity(tab); continue; }
+        const reason = guard?.reason || 'no-composer';
+        const explanation = { draft: 'Input draft is present', busy: 'The chat is busy', menu: 'A selection or permission menu is open',
+          'copy-mode': 'The pane is in copy mode', 'no-composer': 'The input field was not recognized',
+          'frame-changed': 'The screen changed between captures', 'no-style': 'Input styling is unavailable' }[reason] || 'The input guard refused';
+        const error = Object.assign(Error(`${explanation}; nothing was typed`), { code: 'RELAY_NOT_SENT', reason });
+        if (['no-composer', 'frame-changed', 'no-style'].includes(reason)) {
+          const [y, , height] = frame.cursor;
+          const nearby = value => {
+            const rows = String(value).replace(/\r/g, '').split('\n');
+            if (rows.at(-1) === '') rows.pop();
+            const visible = Number.isInteger(height) && height > 0 ? rows.slice(-height) : rows;
+            const start = Math.max(0, (Number.isInteger(y) ? y : 0) - 5);
+            return visible.slice(start, start + 12).map(row => row.slice(0, 1024));
+          };
+          error.refusal = { tool: tab.lane, cursor: frame.cursor, ...(tab.cliVersion ? { cliVersion: tab.cliVersion } : {}),
+            plain: nearby(frame.screen), styled: nearby(frame.styled) };
+        }
+        throw error;
+      }
+      check(); assertIdentity(tab);
+    } catch (error) {
+      if (error.code === 'RELAY_NOT_SENT') throw error;
+      const reason = error.reason === 'busy' ? 'busy' : 'identity';
+      const message = reason === 'busy' ? 'The chat became busy; nothing was typed' :
+        `Chat identity could not be verified; nothing was typed: ${error.message}`;
+      throw Object.assign(Error(message), { code: 'RELAY_NOT_SENT', reason });
+    }
+    // From the first send-keys onward, an error has an uncertain outcome.
     forTab(tab, ['send-keys', '-t', tab.pane, '-l', '--', text]);
     sleep(1600);
     check(); assertIdentity(tab);
@@ -147,7 +183,7 @@ export function createTmuxBackend({ env = process.env,
     }
     if (alive(tab)) throw Error('The tab "' + tab.name + '" did not close; close it manually.');
   }
-  return { open, alive, close, sendGuarded, call(tab, action, spec = {}) {
+  return { open, alive, close, capture, sendGuarded, call(tab, action, spec = {}) {
     if (action === 'read') return read(tab, spec.lines);
     if (action === 'send') return send(tab, spec.text);
     if (action === 'keys') return keys(tab, spec.keys);

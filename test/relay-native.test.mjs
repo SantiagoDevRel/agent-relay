@@ -1,18 +1,18 @@
 // Real HTTP -> collector -> guarded Win32 console input -> transcript -> review.
 // Only isolated fake provider processes and files are used, never real chats.
 import assert from 'node:assert/strict';
-import {execFile,spawn} from 'node:child_process';
+import {spawn} from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {promisify} from 'node:util';
 import {test} from 'node:test';
 import {processIdentity} from '../server/system.mjs';
 import {projectKey} from '../server/claude.mjs';
-const run=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+import {assertNoConsoleWindow,headlessConsole} from './fixtures/headless-console.mjs';
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const fakeSource=String.raw`
 import fs from 'node:fs';
 const [marker,session,transcript,role]=process.argv.slice(2);
@@ -51,7 +51,7 @@ async function until(check,what,ms=nativeWaitMs){const deadline=Date.now()+ms;wh
 test('on-demand relay resolves a technical question and completes native FIX -> correction -> GO', {skip:process.platform!=='win32',timeout:nativeWaitMs+45000},async()=>{
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'relay-native-')),work=path.join(home,'work'),sessions=path.join(home,'.claude/sessions'),project=path.join(home,'.claude/projects',projectKey(work));
  for(const dir of [work,sessions,project])fs.mkdirSync(dir,{recursive:true});
- const fake=path.join(home,'claude.exe'),script=path.join(home,'fake.mjs'),pids=[];
+ const fake=path.join(home,'claude.exe'),script=path.join(home,'fake.mjs'),pids=[],hosts=[];
  try{fs.linkSync(process.execPath,fake);}catch{fs.copyFileSync(process.execPath,fake);}fs.writeFileSync(script,fakeSource);
  const lease=net.createServer();await new Promise(r=>lease.listen(0,'127.0.0.1',r));const port=lease.address().port;await new Promise(r=>lease.close(r));
  const base='http://127.0.0.1:'+port;let server;
@@ -62,8 +62,10 @@ test('on-demand relay resolves a technical question and completes native FIX -> 
    fs.writeFileSync(file,JSON.stringify({type:'user',cwd:work,timestamp:new Date().toISOString(),message:{content:'Native fixture '+role}})+'\n');
    // Session path is known only after startup; pass a stable fixture path, then link it.
    const session=path.join(home,role+'-session.json');
-   await run('powershell.exe',['-NoProfile','-Command',`Start-Process conhost.exe -WindowStyle Hidden -ArgumentList '"${fake}" "${script}" "${marker}" "${session}" "${file}" "${role}"'`],{windowsHide:true});
+   // Window-less headless console: a hidden classic console window can still take keyboard focus.
+   const host=headlessConsole(fake,[script,marker,session,file,role]);hosts.push(host);
    const pid=await until(()=>fs.existsSync(marker)&&Number(fs.readFileSync(marker,'utf8')),role+' process',15000);pids.push(pid);
+   await assertNoConsoleWindow([host.pid,pid]);
    const identity=await processIdentity(pid),data={pid,sessionId:id,cwd:work,startedAt:identity.createdMs,procStart:identity.created,kind:'interactive',entrypoint:'cli',status:'idle',updatedAt:Date.now()};
    fs.writeFileSync(session,JSON.stringify(data));fs.linkSync(session,path.join(sessions,pid+'.json'));
   }
@@ -93,6 +95,7 @@ test('on-demand relay resolves a technical question and completes native FIX -> 
  }finally{
   if(server&&server.exitCode===null){const done=new Promise(r=>server.once('exit',r));server.kill();await done;}
   for(const pid of pids)try{process.kill(pid);}catch{/* Only our fixture PIDs. */}
+  for(const host of hosts)host.close();
   await sleep(100);fs.rmSync(home,{recursive:true,force:true});
  }
 });

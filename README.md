@@ -60,15 +60,40 @@ Matching requires Claude's PID/start-time native session record or Codex's
 PID-bound logs database with an event newer than process start. Folder/title
 similarity, transcript handles and old resume arguments never grant delivery.
 The pane/window/session and process start are rechecked, and the provider composer
-must be visibly idle and empty. A suggestion also counts as empty when matching
-plain and styled captures show every visible composer character after the prompt
-marker drawn dim (SGR 2). Normal draft text, missing styles and mismatched capture
-frames remain refused. Status checks ignore trailing blank padding, so a fresh
-chat can place its composer near the top of a tall pane; busy, approval and
-copy-mode screens remain refused. Messages remain in private 0700 directories/0600
-files. Relay submits one literal file-reference line, sends Enter once and never
-retries uncertain delivery or accepts terminal slash commands. Discovery never
-modifies provider files.
+must be visibly idle and empty. Claude's upper/lower composer box is a structural
+cue in default, accept-edits and plan modes, even if the status wording changes.
+Codex's trailing model/path footer also identifies its composer when a draft hides
+the shortcuts row. A suggestion counts as empty only when matching plain and
+styled captures show every visible composer character after the prompt marker
+drawn dim (SGR 2). Normal drafts and mixed styling remain refused. Relay recaptures
+up to twice if the plain and styled frames disagree; persistent changes, missing
+styling, unrecognized screens, busy/approval/trust menus and copy mode stay refused.
+Status checks ignore trailing blank padding, including top-aligned composers.
+Messages remain in private 0700 directories/0600 files. Relay submits one literal
+file-reference line, sends Enter once and never retries uncertain delivery or
+accepts terminal slash commands. Discovery never modifies provider files.
+
+A refusal before typing has a reason: `draft`, `busy`, `menu`, `copy-mode`,
+`identity`, `no-composer`, `frame-changed` or `no-style`. Conversation records a
+`not-sent` receipt and returns an actionable HTTP 409, **Not sent: ... Nothing was
+typed**. A failure after typing remains **uncertain**; check the conversation
+before trying again. Only recognition failures may save a private `refusal.json`
+next to the message receipt: at most 12 nearby plain/styled rows, cursor and an
+available CLI version, bounded to 16 KiB. Draft, busy and menu refusals do not save
+screen snapshots. Treat diagnostics as private chat data; never publish them.
+
+After a provider CLI upgrade, run the optional Linux canary from this checkout:
+
+```bash
+node scripts/composer-canary.mjs --cwd ~/project
+```
+
+It opens installed Claude/Codex in its own private tmux server, checks fresh,
+draft and cleared composers, prints JSON and closes only its verified probe
+windows. It types a draft and clears it with Ctrl+U; it never presses Enter or
+sends a model message. It uses the bundled tmux backend directly and needs no
+external chat-tab launcher. Review the selected project and existing CLI login
+before running it. Regression tests substitute fake providers.
 
 `deploy/agent-relay.service` is an **uninstalled** user-unit template for a checkout
 at `~/agent-relay` and workspace at `~/Projects`. Review both paths and
@@ -106,6 +131,18 @@ Funnel, and verifies the existing Host/HTTPS/owner/Origin/run-token gates.
 Serve identity describes the requesting device: an untagged owner device can
 access a tagged server; a tagged requester without user identity is rejected.
 Regression fixtures do not certify actual phone connectivity or tailnet policy.
+
+### Windows composer limitation
+
+Windows console APIs do not preserve SGR 2 (dim), including conhost and Windows
+Terminal's OpenConsole. Relay therefore refuses a grey Claude suggestion as a
+draft rather than assuming it is safe to overwrite. The refusal explains this
+limit. Clear the composer, turn off prompt suggestions in Claude's `/config`, or
+launch Claude with `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` in its environment.
+This repository does not ship a chat-tab launcher or change existing CLI settings.
+The literal Codex placeholder remains recognized. Windows regression fixtures use
+`conhost --headless` and assert that they own no classic console or foreground
+window.
 
 Public defaults use `~/Projects`, generic topic examples and Ollama on `http://127.0.0.1:11434`. They contain no owner's paths, project names or internal endpoints. Configure your own workspace before using project selectors.
 

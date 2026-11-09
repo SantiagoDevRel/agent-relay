@@ -20,22 +20,39 @@ public struct KEY_EVENT_RECORD {
 [StructLayout(LayoutKind.Sequential)] public struct INFO { public COORD Size,Cursor; public short Attr; public SMALL_RECT Window; public COORD Max; }
 [DllImport("kernel32.dll")] static extern bool GetConsoleScreenBufferInfo(IntPtr h,out INFO info);
 [DllImport("kernel32.dll",CharSet=CharSet.Unicode,EntryPoint="ReadConsoleOutputCharacterW",ExactSpelling=true)] static extern bool ReadConsoleOutputCharacter(IntPtr h,[Out] char[] text,uint length,COORD start,out uint read);
-static bool EmptyPrompt() {
+// Composer state: null = empty (safe to type), otherwise the refusal reason.
+// The console API exposes characters and legacy attributes only. Measured on
+// 2026-11-08 (conhost and Windows Terminal 1.24 OpenConsole): SGR 2 (dim) leaves
+// the attribute word unchanged, so a dim placeholder such as Claude's
+// `Try "..."` cannot be told apart from a typed draft. Any visible text other
+// than the literal Codex placeholder is therefore a draft.
+static string ComposerRefusal() {
  var h=CreateFile("CONOUT$",0x80000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
- try { INFO info; if(!GetConsoleScreenBufferInfo(h,out info))return false;
+ if(h==new IntPtr(-1))return "no-composer";
+ try { INFO info; if(!GetConsoleScreenBufferInfo(h,out info))return "no-composer";
   var text=new System.Text.StringBuilder();
   for(int y=Math.Max(0,info.Cursor.Y-12);y<=info.Cursor.Y;y++){
    char[] line=new char[info.Size.X]; uint n;
-   if(!ReadConsoleOutputCharacter(h,line,(uint)line.Length,new COORD{X=0,Y=(short)y},out n))return false;
+   if(!ReadConsoleOutputCharacter(h,line,(uint)line.Length,new COORD{X=0,Y=(short)y},out n))return "no-composer";
    text.AppendLine(new string(line,0,(int)n).TrimEnd('\0',' '));
   }
   string value=text.ToString();
   // Claude draws U+276F, older Codex U+00BB, Codex 0.161+ U+203A.
   int at=Math.Max(Math.Max(value.LastIndexOf('\u276f'),value.LastIndexOf('\u00bb')),value.LastIndexOf('\u203a'));
-  if(at<0)return false;
+  if(at<0)return "no-composer";
   string draft=value.Substring(at+1).Trim();
-  return draft.Length==0 || draft=="Ask Codex to do anything";
+  return draft.Length==0 || draft=="Ask Codex to do anything" ? null : "draft";
  }finally{CloseHandle(h);}
+}
+// Written only when nothing has been typed: the caller may report "Not sent".
+public static string NotSent(string reason) {
+ return "{\"submitted\":false,\"notSent\":true,\"reason\":\""+reason+"\"}";
+}
+static bool SameProcess(uint pid, long startedTicks, string image) {
+ try {
+  var p=System.Diagnostics.Process.GetProcessById((int)pid);
+  return !p.HasExited && p.StartTime.ToFileTimeUtc()==startedTicks && p.ProcessName==image;
+ } catch(Exception) { return false; }
 }
 static INPUT_RECORD Key(char c, bool down) {
  var r=new INPUT_RECORD(); r.EventType=1; r.KeyEvent.bKeyDown=down?1:0;
@@ -47,23 +64,26 @@ static INPUT_RECORD Key(char c, bool down) {
 public static string Send(uint pid, string text, long startedTicks, string image) {
  if(text.Length==0 || text.Length>2000) throw new Exception("Invalid length");
  foreach(char c in text) if(c<32 || c>126) throw new Exception("ASCII single-line text required");
- var p=System.Diagnostics.Process.GetProcessById((int)pid);
- if(p.StartTime.ToFileTimeUtc()!=startedTicks || p.ProcessName!=image) throw new Exception("Identity mismatch");
+ // Every refusal below returns before the first WriteConsoleInput: nothing typed.
+ if(!SameProcess(pid,startedTicks,image)) return NotSent("identity");
  FreeConsole();
- if(!AttachConsole(pid)) throw new Exception("Attach failed: "+Marshal.GetLastWin32Error());
+ if(!AttachConsole(pid)) return NotSent("identity");
  IntPtr input=IntPtr.Zero;
  try {
   uint[] list=new uint[64]; uint n=GetConsoleProcessList(list,64);
-  if(n==0 || n>64 || Array.IndexOf(list,pid)<0) throw new Exception("Console identity unavailable");
-  foreach(uint id in list) {
-   if(id==0 || id==pid || id==(uint)System.Diagnostics.Process.GetCurrentProcess().Id) continue;
-   var other=System.Diagnostics.Process.GetProcessById((int)id);
-   if(other.ProcessName=="codex" || other.ProcessName=="claude") throw new Exception("Another agent shares console");
+  if(n==0 || n>64 || Array.IndexOf(list,pid)<0) return NotSent("identity");
+  uint self=(uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+  for(int i=0;i<n;i++) {
+   uint id=list[i];
+   if(id==0 || id==pid || id==self) continue;
+   string name;
+   try { name=System.Diagnostics.Process.GetProcessById((int)id).ProcessName; } catch(Exception) { return NotSent("identity"); }
+   if(name=="codex" || name=="claude") return NotSent("identity");
   }
-  if(p.HasExited || p.StartTime.ToFileTimeUtc()!=startedTicks) throw new Exception("Process changed");
-  if(text.Length>0 && (image=="codex" || image=="claude") && !EmptyPrompt()) throw new Exception("Input draft or prompt unavailable; no text sent");
+  if(!SameProcess(pid,startedTicks,image)) return NotSent("identity");
+  if(image=="codex" || image=="claude") { string refusal=ComposerRefusal(); if(refusal!=null) return NotSent(refusal); }
   input=CreateFile("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);
-  if(input==new IntPtr(-1)) throw new Exception("No console input");
+  if(input==new IntPtr(-1)) return NotSent("no-composer");
   var records=new INPUT_RECORD[text.Length*2];
   for(int i=0;i<text.Length;i++){ records[2*i]=Key(text[i],true); records[2*i+1]=Key(text[i],false); }
   uint written;
@@ -75,8 +95,8 @@ public static string Send(uint pid, string text, long startedTicks, string image
 }
 '@
 $spec=Get-Content -LiteralPath $env:AGENT_RELAY_INPUT_FILE -Raw -Encoding utf8 | ConvertFrom-Json
-$target=Get-Process -Id ([int]$spec.pid)
-if($target.ProcessName -ne $spec.image) { throw 'Image mismatch' }
-$receipt=[AgentRelay.Input]::Send([uint32]$spec.pid,[string]$spec.text,[long]$spec.startedTicks,[string]$spec.image)
+$target=Get-Process -Id ([int]$spec.pid) -ErrorAction SilentlyContinue
+if(-not $target -or $target.ProcessName -ne $spec.image) { $receipt=[AgentRelay.Input]::NotSent('identity') }
+else { $receipt=[AgentRelay.Input]::Send([uint32]$spec.pid,[string]$spec.text,[long]$spec.startedTicks,[string]$spec.image) }
 if($spec.receipt) { [System.IO.File]::WriteAllText([string]$spec.receipt,$receipt) }
 $receipt
