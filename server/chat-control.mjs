@@ -6,9 +6,42 @@ import { readConversation } from './summary.mjs';
 import { enrollChat, messageInput, messageCommand } from './relay-transport.mjs';
 const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const fail = (message, status = 409) => Object.assign(Error(message), { status });
+
+function notSentText(tool, reason, platform) {
+  if (platform === 'win32' && tool === 'claude' && reason === 'draft') {
+    return "Not sent: the chat's input field shows text. On Windows, Relay cannot tell Claude's grey suggestion from a draft. Nothing was typed; clear the input field or turn off prompt suggestions in /config before trying again.";
+  }
+  const explanation = {
+    draft: "the chat's input field has a draft. Nothing was typed; clear the draft in the chat before trying again.",
+    busy: 'the chat is busy. Nothing was typed; wait until it finishes before trying again.',
+    menu: 'the chat has a selection or permission menu open. Nothing was typed; resolve it in the chat before trying again.',
+    'copy-mode': 'the terminal is in copy mode. Nothing was typed; leave copy mode in the terminal before trying again.',
+    identity: 'the chat identity could not be verified. Nothing was typed; reopen the conversation and check the chat before trying again.',
+    'frame-changed': 'the screen kept changing between captures. Nothing was typed; wait until the chat is idle before trying again.',
+    'no-style': 'Relay could not verify the input styling. Nothing was typed; check the input field in the chat before trying again.',
+  }[reason];
+  return `Not sent: ${explanation || `Relay does not recognize this chat's screen (${tool}). Nothing was typed; open the chat in the ${tool === 'claude' ? 'Claude app' : 'Codex terminal'}.`}`;
+}
+
+// A transport may provide a bounded snapshot only for recognition failures.
+// Enforce the privacy and byte limits again at the receipt boundary.
+function saveRefusal(folder, tool, reason, refusal) {
+  if (!['no-composer', 'frame-changed', 'no-style'].includes(reason) || !refusal) return;
+  const rows = value => Array.isArray(value) ? value.slice(0, 12).map(row => String(row).slice(0, 1024)) : [];
+  const snapshot = { tool, reason, cursor: Array.isArray(refusal.cursor) ? refusal.cursor.slice(0, 4).map(n => Number.isInteger(n) ? n : null) : [],
+    ...(typeof refusal.cliVersion === 'string' ? { cliVersion: refusal.cliVersion.slice(0, 128) } : {}),
+    plain: rows(refusal.plain), styled: rows(refusal.styled) };
+  let json = JSON.stringify(snapshot);
+  while (Buffer.byteLength(json) > 16 * 1024) {
+    snapshot.plain = snapshot.plain.map(row => row.slice(0, Math.floor(row.length / 2)));
+    snapshot.styled = snapshot.styled.map(row => row.slice(0, Math.floor(row.length / 2)));
+    json = JSON.stringify(snapshot);
+  }
+  fs.writeFileSync(path.join(folder, 'refusal.json'), json, { flag: 'wx', mode: 0o600 });
+}
 export class ChatControl {
-  constructor({ targets, artifacts, leased = () => false, enroll = enrollChat, deliver = messageInput }) {
-    Object.assign(this, { targets, artifacts, leased, enroll, deliver }); this.pending = new Set();
+  constructor({ targets, artifacts, leased = () => false, enroll = enrollChat, deliver = messageInput, platform = process.platform }) {
+    Object.assign(this, { targets, artifacts, leased, enroll, deliver, platform }); this.pending = new Set();
   }
   chat(id) {
     const chat = UUID.test(id || '') && this.targets().get(id);
@@ -66,6 +99,13 @@ export class ChatControl {
         record.status = 'submitted'; fs.writeFileSync(receipt, JSON.stringify(record));
         return { id: requestId, status: 'submitted' };
       } catch (error) {
+        if (error.code === 'RELAY_NOT_SENT') {
+          record.status = 'not-sent'; record.reason = error.reason; record.detail = error.message;
+          try { saveRefusal(folder, chat.tool, error.reason, error.refusal); }
+          catch { record.diagnosticsUnavailable = true; }
+          fs.writeFileSync(receipt, JSON.stringify(record));
+          throw Object.assign(fail(notSentText(chat.tool, error.reason, this.platform)), { code: error.code, reason: error.reason });
+        }
         record.status = 'uncertain'; record.detail = error.message; fs.writeFileSync(receipt, JSON.stringify(record));
         throw fail('Delivery could not be confirmed. Review the conversation before trying again; the message was not resent automatically.');
       }

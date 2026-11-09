@@ -1,0 +1,32 @@
+{
+  "fresh": {
+    "plain": "\n  >_ OpenAI Codex (v0.167.0)\n     ~/project\n  permissions: YOLO mode\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  GPT-6.1-Sol high · ~/project\n  ← for agents · ? for shortcuts\n",
+    "styled": "\n  \u001b[38;5;75m>_ \u001b[1m\u001b[39mOpenAI Codex\u001b[0;2m (v0.167.0)\u001b[0m\n     \u001b[2m~/project\u001b[0m\n\u001b[2m  permissions: \u001b[0;1m\u001b[38;5;5mYOLO mode\u001b[0m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m\n\n  \u001b[38;5;116mGPT-6.1-Sol high\u001b[39m · \u001b[38;5;229m~/project\u001b[39m\n  \u001b[1m←\u001b[0m for agents · \u001b[1m?\u001b[0m for shortcuts\n",
+    "cursor": [
+      20,
+      2,
+      24,
+      0
+    ]
+  },
+  "draft": {
+    "plain": "\n  >_ OpenAI Codex (v0.167.0)\n     ~/project\n  permissions: YOLO mode\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› relay canary draft\n\n  GPT-6.1-Sol high · ~/project\n\n",
+    "styled": "\n  \u001b[38;5;75m>_ \u001b[1m\u001b[39mOpenAI Codex\u001b[0;2m (v0.167.0)\u001b[0m\n     \u001b[2m~/project\u001b[0m\n\u001b[2m  permissions: \u001b[0;1m\u001b[38;5;5mYOLO mode\u001b[0m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u001b[1m›\u001b[0m relay canary draft\n\n  \u001b[38;5;116mGPT-6.1-Sol high\u001b[39m · \u001b[38;5;229m~/project\u001b[39m\n\n",
+    "cursor": [
+      20,
+      20,
+      24,
+      0
+    ]
+  },
+  "cleared": {
+    "plain": "\n  >_ OpenAI Codex (v0.167.0)\n     ~/project\n  permissions: YOLO mode\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n› Ask Codex to do anything\n\n  GPT-6.1-Sol high · ~/project\n  ← for agents · ? for shortcuts\n",
+    "styled": "\n  \u001b[38;5;75m>_ \u001b[1m\u001b[39mOpenAI Codex\u001b[0;2m (v0.167.0)\u001b[0m\n     \u001b[2m~/project\u001b[0m\n\u001b[2m  permissions: \u001b[0;1m\u001b[38;5;5mYOLO mode\u001b[0m\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m\n\n  \u001b[38;5;116mGPT-6.1-Sol high\u001b[39m · \u001b[38;5;229m~/project\u001b[39m\n  \u001b[1m←\u001b[0m for agents · \u001b[1m?\u001b[0m for shortcuts\n",
+    "cursor": [
+      20,
+      2,
+      24,
+      0
+    ]
+  }
+}

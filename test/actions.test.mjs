@@ -1,25 +1,25 @@
 // End-to-end test of "Cerrar chat" and "Resumen" against the real server, with a
 // fake home: two fake Claude chats (node.exe linked as claude.exe, each in its own
-// hidden console) and a fake ollama. Nothing here touches real chats or consoles.
+// window-less headless console, so no fixture can take keyboard focus) and a fake
+// ollama. Nothing here touches real chats or consoles.
 // Needs `npm run build`. Windows only.
 import assert from 'node:assert/strict';
-import { execFile, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { promisify } from 'node:util';
 import { projectKey } from '../server/claude.mjs';
 import { processIdentity } from '../server/system.mjs';
+import { assertNoConsoleWindow, headlessConsole } from './fixtures/headless-console.mjs';
 
 const PORT = 4862;
 const BASE = `http://127.0.0.1:${PORT}`;
 const SERVER = path.resolve(new URL('../server/server.mjs', import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
 const built = fs.existsSync(new URL('../dist/index.html', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const run = promisify(execFile);
 
 // Quits on the second Ctrl+C like Claude Code: writes `cost-state` and removes its
 // session file. With `stubborn` it ignores Ctrl+C, so only a forced close ends it.
@@ -99,10 +99,10 @@ test('close sends Ctrl+C (clean exit = closed), forces a stubborn chat, and summ
     });
     await new Promise((r) => ollama.listen(0, '127.0.0.1', r));
 
-    const fakes = [];
+    const fakes = [], hosts = [];
     let server;
     try {
-      // Two chats, each in its own hidden console (conhost, never Windows Terminal).
+      // Two chats, each in its own headless console (conhost --headless, no window).
       for (const mode of ['clean', 'stubborn']) {
         const id = crypto.randomUUID();
         const marker = path.join(home, `${mode}.pid`);
@@ -114,9 +114,10 @@ test('close sends Ctrl+C (clean exit = closed), forces a stubborn chat, and summ
           { type: 'assistant', timestamp: new Date(Date.now() - 40_000).toISOString(), message: { content: [{ type: 'text', text: '¿Lo despliego?' }] } },
           { type: 'ai-title', aiTitle: `Login ${mode}` },
         ].map((e) => JSON.stringify(e)).join('\n')}\n`);
-        await run('powershell.exe', ['-NoProfile', '-Command',
-          `Start-Process conhost.exe -WindowStyle Hidden -ArgumentList '"${fakeExe}" "${script}" "${marker}" "${sessions}" "${transcript}" "${mode}"'`]);
+        const host = headlessConsole(fakeExe, [script, marker, sessions, transcript, mode]);
+        hosts.push(host);
         const pid = Number(await until(() => fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').match(/pid=(\d+)/)?.[1], 15_000, `${mode} fake chat`));
+        await assertNoConsoleWindow([host.pid, pid]);
         fakes.push({ id, pid, mode, transcript });
         const identity = await processIdentity(pid);
         assert.equal(identity.image, 'claude.exe');
@@ -127,7 +128,7 @@ test('close sends Ctrl+C (clean exit = closed), forces a stubborn chat, and summ
       server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', SERVER], {
         env: { ...process.env, CHATS_PORT: String(PORT), USERPROFILE: home, HOME: home, LOCALAPPDATA: path.join(home, 'AppData', 'Local'),
           CHATS_SUMMARY_URL: `http://127.0.0.1:${ollama.address().port}`, CHATS_SUMMARY_MODEL: 'fake-model' },
-        stdio: 'ignore',
+        stdio: 'ignore', windowsHide: true,
       });
       const token = await until(async () => {
         try {
@@ -197,6 +198,7 @@ test('close sends Ctrl+C (clean exit = closed), forces a stubborn chat, and summ
     } finally {
       server?.kill();
       for (const f of fakes) if (alive(f.pid)) process.kill(f.pid);
+      for (const host of hosts) host.close();
       ollama.close();
       await sleep(800);
       fs.rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
