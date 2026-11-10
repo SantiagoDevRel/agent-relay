@@ -114,8 +114,9 @@ export function inspectLinuxInput(tool, screen, [y, x, height, mode] = [], style
   }
   const draft = [before[at].replace(/^\s*[❯›»]/u, ''), ...draftRows].join('\n').trim();
   const colors = typeof styled === 'string' ? styledRows(styled) : null;
-  // The TUI may redraw between captures. Never infer emptiness from another frame.
-  if (colors && (colors.length !== rows.length || colors.some((row, i) => row.text !== rows[i]))) return result('frame-changed');
+  // tmux -e may retain trailing spaces before SGR that plain capture trims.
+  // All other text and row counts must match: never accept another TUI frame.
+  if (colors && (colors.length !== rows.length || colors.some((row, i) => row.text.trimEnd() !== rows[i].trimEnd()))) return result('frame-changed');
   if (draft === '') return result('empty');
   if (tool === 'codex' && draft === 'Ask Codex to do anything') return result('placeholder');
   if (!colors) return result('no-style');

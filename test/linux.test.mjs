@@ -18,6 +18,51 @@ const screen = prompt => `${prompt}\n bypass permissions on\n\n`;
 const claudeSuggestion = '\x1b[39m❯\u00a0\x1b[2mTry\x1b[0m \x1b[2m"create\x1b[0m \x1b[2ma\x1b[0m \x1b[2mutil\x1b[0m \x1b[2mlogging.py\x1b[0m \x1b[2mthat..."';
 const plainSuggestion = '❯\u00a0Try "create a util logging.py that..."';
 
+// Synthetic panes shaped like live tmux captures where -e keeps trailing spaces before SGR.
+const remoteRow = '  /remote-control is active · Continue here, on your phone, or at';
+const namedBorder = '─────────────────────────────────────────────────────────── supervisor ─';
+function supervisorPane() {
+  const rows = [remoteRow, '  https://example.invalid/session_fixture', '', namedBorder,
+    '❯ Try "refactor bundle.js"', '─'.repeat(80), '  ⏵⏵ bypass permissions on (shift+tab to cycle)',
+    '                                        ✔ Update installed · Restart to update',
+    '                                                                    /rc active'];
+  const styled = [...rows];
+  styled[0] = '  /remote-control is active\x1b[38;5;246m · Continue here, on your phone, or at \x1b[39m';
+  styled[4] = '❯ \x1b[2mTry "refactor bundle.js"\x1b[22m';
+  return { plain: rows.join('\n') + '\n', styled: styled.join('\n') + '\n', cursor: [4, 2, rows.length, 0] };
+}
+
+test('styled capture tolerates trailing whitespace while preserving dim placeholder and draft guards', () => {
+  const pane = supervisorPane();
+  assert.deepEqual(inspectLinuxInput('claude', pane.plain, pane.cursor, pane.styled), { empty: true, reason: 'placeholder' });
+  const draft = { ...pane, plain: pane.plain.replace('Try "refactor bundle.js"', 'unfinished draft'),
+    styled: pane.styled.replace('\x1b[2mTry "refactor bundle.js"\x1b[22m', 'unfinished draft') };
+  assert.deepEqual(inspectLinuxInput('claude', draft.plain, draft.cursor, draft.styled), { empty: false, reason: 'draft' });
+});
+
+test('capture normalization still refuses leading/internal whitespace, changed text and row counts', () => {
+  const pane = supervisorPane();
+  for (const changed of [pane.styled.replace('  /remote', ' /remote'), pane.styled.replace('Continue here', 'Continue  here'),
+    pane.styled.replace('Continue here', 'Continue there'), pane.styled + '\n', pane.styled.replace('\n\n', '\n')]) {
+    assert.deepEqual(inspectLinuxInput('claude', pane.plain, pane.cursor, changed), { empty: false, reason: 'frame-changed' });
+  }
+});
+
+test('wrapped sent prompt tolerates a trailing space retained before SGR', () => {
+  const prompt = '❯ continue — your last response was cut off by a transient API error';
+  const rows = ['❯ Write a three line poem about rain.', '',
+    '● API Error: Connection refused — a firewall or proxy may be blocking it', '  (ECONNREFUSED)', '',
+    '✻ Crunched for 0s · done 7:24 AM', '', prompt,
+    '  (watchdog). Resume exactly where you left off; do not redo finished', '  steps.', '',
+    '● API Error: Connection refused — a firewall or proxy may be blocking it', '  (ECONNREFUSED)', '',
+    '✻ Cogitated for 0s · done 7:25 AM', '', '─'.repeat(80), '❯ ', '─'.repeat(80),
+    '  ⏵⏵ bypass permissions on (shift+tab to cycle)', '                                        ✔ Update installed · /restart to apply'];
+  const plain = rows.join('\n') + '\n', styled = plain.replace(prompt, prompt + ' \x1b[39m');
+  assert.deepEqual(inspectLinuxInput('claude', plain, [17, 2, rows.length, 0], styled), { empty: true, reason: 'empty' });
+  assert.deepEqual(inspectLinuxInput('claude', plain, [17, 2, rows.length, 0], styled.replace('last response', 'next response')),
+    { empty: false, reason: 'frame-changed' });
+});
+
 test('Claude structural box accepts all permission modes and unknown status text, but never a draft or menu', () => {
   for (const status of ['? for shortcuts', '⏵⏵ accept edits on', '⏸ plan mode on', 'A future status label']) {
     const full = prompt => ['Claude Code v2.1.319', '~/project', '', '────────────────', prompt,
