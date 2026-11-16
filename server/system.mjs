@@ -121,6 +121,7 @@ function exists(pid) {
 export class ProcessWatch {
   constructor() {
     this.known = new Map(); // pid -> 'claude.exe' | 'codex.exe'
+    this.born = new Map(); // pid -> creation time (ms), when Windows gave one
     this.verifiedAt = 0;
     this.pending = null;
   }
@@ -133,15 +134,19 @@ export class ProcessWatch {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        'Get-Process -Name claude,codex -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Id),$($_.ProcessName)" }',
+        'Get-Process -Name claude,codex -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Id),$($_.ProcessName),$(try { $_.StartTime.ToFileTimeUtc() } catch { 0 })" }',
       ]);
       if (ok) {
         const next = new Map();
+        const born = new Map();
         for (const line of stdout.split(/\r?\n/)) {
-          const m = line.trim().match(/^(\d+),(.+)$/);
-          if (m) next.set(Number(m[1]), `${m[2].toLowerCase()}.exe`);
+          const m = line.trim().match(/^(\d+),([^,]+),(\d*)$/);
+          if (!m) continue;
+          next.set(Number(m[1]), `${m[2].toLowerCase()}.exe`);
+          if (Number(m[3]) > 0) born.set(Number(m[1]), Number(BigInt(m[3]) / 10_000n) - FILETIME_EPOCH_MS);
         }
         this.known = next;
+        this.born = born;
         this.verifiedAt = Date.now();
       }
       this.pending = null;
@@ -155,9 +160,14 @@ export class ProcessWatch {
   snapshot(now = Date.now()) {
     if (now - this.verifiedAt > VERIFY_EVERY_MS) this.verify();
     const known = this.known;
+    const born = this.born;
     const verifiedAt = this.verifiedAt;
     const self = this;
     return {
+      // Creation time (ms) of a listed process; undefined when Windows did not give one.
+      created(pid) {
+        return born.get(pid);
+      },
       get(pid, seenAt = Infinity) {
         if (!pid || !exists(pid)) return undefined;
         const name = known.get(pid);

@@ -18,7 +18,10 @@ const CHUNK = 4 * 1024 * 1024;
 
 const cache = new Map(); // rollout -> { size, parsed }
 const rolloutMemo = new Map(); // thread id -> { updated, parsed }
-const procMemo = new Map(); // thread id -> { updated, checkedAt, pid, ts }
+const procMemo = new Map(); // thread id -> { updated, checkedAt, pid, ts, kept }
+// thread id -> { pid, ts } of the last log row read for it. Observed evidence, not a cache:
+// Codex deletes the row later and nothing else names the process, so a resync keeps it.
+const lastLogged = new Map();
 const PROC_RECHECK_MS = 30_000;
 let candidateMemo = { at: 0, rows: [] };
 let dbs = null;
@@ -206,17 +209,28 @@ function aliveThreads(db, threads, procs, now) {
     let m = procMemo.get(t.id);
     if (!m || m.updated !== t.updated || now - m.checkedAt > PROC_RECHECK_MS) {
       const row = db.lastProcess.get(t.id);
+      // Codex prunes logs_*.sqlite long before a terminal closes: with twenty chats writing,
+      // its oldest row was two hours old (2026-11-16). A chat that had waited longer lost its
+      // rows, was shown closed with its terminal open, and nothing was delivered to it. A
+      // thread whose rows are gone keeps the process it last logged for, while that same
+      // process still runs.
+      const seen = row ? null : lastLogged.get(t.id);
       m = {
         updated: t.updated,
         checkedAt: now,
-        pid: Number(String(row?.process_uuid || '').match(/^pid:(\d+):/)?.[1]),
-        ts: toMs(row?.ts),
+        pid: seen ? seen.pid : Number(String(row?.process_uuid || '').match(/^pid:(\d+):/)?.[1]),
+        ts: seen ? seen.ts : toMs(row?.ts),
+        kept: Boolean(seen),
       };
+      if (row && m.pid) lastLogged.set(t.id, { pid: m.pid, ts: m.ts });
       procMemo.set(t.id, m);
     }
     const { pid, ts } = m;
     const name = pid ? procs.get(pid, ts) : undefined;
     if (name !== 'codex.exe' && name !== 'unverified') continue;
+    // No row vouches for a kept pid any more, so the process must: one created after the
+    // thread's last log is another program that got the same number.
+    if (m.kept && !(procs.created?.(pid) <= ts + 1000)) continue;
     const current = byPid.get(pid);
     // A terminal shows one thread at a time: keep the one it touched last.
     if (!current || ts > current.ts) byPid.set(pid, { id: t.id, ts });
