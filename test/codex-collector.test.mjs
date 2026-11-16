@@ -106,3 +106,48 @@ test('Codex: showing automated chats preserves their real process and working st
   assert.equal(chat.pid, AUTOMATED_PID);
   assert.equal(chat.canOpen, false, 'never offer to reopen a live session');
 });
+
+// 2026-11-16: with twenty Codex chats writing, the oldest row of logs_2.sqlite was two hours
+// old. Five chats that had waited longer were shown closed with their terminals open, and
+// nothing was delivered to them (one message waited 5 h 36 min).
+test('Codex: a chat whose log rows Codex pruned stays open while its own process runs', async () => {
+  const { clearCodexCache } = await import('../server/codex.mjs');
+  const QUIET_PID = 4545;
+  const loggedAt = Math.floor((now - 60_000) / 1000) * 1000;
+  const write = (file, sql, ...args) => { const db = new DatabaseSync(path.join(codexDir, file)); db.prepare(sql).run(...args); db.close(); };
+  write('state_5.sqlite', `insert into threads (id, updated_at, updated_at_ms, source, name, cwd, rollout_path) values (?, ?, ?, 'cli', 'Quiet chat', ?, ?)`,
+    'quiet', loggedAt / 1000, loggedAt, path.join(home, 'repo'), rollout('quiet', finished(60_000)));
+  write('logs_2.sqlite', `insert into logs (ts, ts_nanos, thread_id, process_uuid) values (?, 0, 'quiet', ?)`, loggedAt / 1000, `pid:${QUIET_PID}:uuid-quiet`);
+  let running = true;
+  let created = loggedAt - 3600_000;
+  const watch = { get: (pid) => (pid === QUIET_PID && running ? 'codex.exe' : procs.get(pid)), created: (pid) => (pid === QUIET_PID ? created : undefined) };
+  let at = now;
+  const quiet = () => { at += 31_000; return collectCodex({ procs: watch, windowMs: DAY, now: at }).chats.find((c) => c.id === 'quiet'); };
+
+  assert.equal(quiet().alive, true, 'open while its log row exists');
+  write('logs_2.sqlite', `delete from logs where thread_id = 'quiet'`);
+  const kept = quiet();
+  assert.equal(kept.alive, true, 'the trimmed row does not close the chat');
+  assert.equal(kept.state, 'waiting');
+  assert.equal(kept.pid, QUIET_PID);
+  assert.equal(kept.pidSeenAt, loggedAt, 'the send path still checks the process against the last real log');
+  assert.equal(kept.canOpen, false, 'never offer to reopen a live session');
+
+  clearCodexCache();
+  assert.equal(quiet().alive, true, 'a resync keeps what was observed');
+
+  created = loggedAt + 60_000;
+  assert.equal(quiet().alive, false, 'a process created after the last log is another program with the same pid');
+  created = undefined;
+  assert.equal(quiet().alive, false, 'without a creation time nothing vouches for the pid');
+  created = loggedAt - 3600_000;
+  running = false;
+  const gone = quiet();
+  assert.equal(gone.alive, false, 'the process ended');
+  assert.equal(gone.state, 'closed');
+  running = true;
+  assert.equal(quiet().alive, true, 'the same process seen again is still the chat');
+
+  const blind = collectCodex({ procs: { get: watch.get }, windowMs: DAY, now: at + 31_000 });
+  assert.equal(blind.chats.find((c) => c.id === 'quiet').alive, false, 'a watcher that cannot tell creation times keeps the old rule');
+});
