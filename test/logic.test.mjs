@@ -7,7 +7,8 @@ import { claudeMessageKind, classifyClaude, classifyCodex } from '../server/clas
 import { backgroundEventAt, noteSubagentEvent, parseClaudeTranscript, projectKey, readTranscript, resumeCwd } from '../server/claude.mjs';
 import { agentTextOf, readRollout, taskOf } from '../server/codex.mjs';
 import { commandsFor, placeOf, topicOf, WORKSPACE } from '../server/places.mjs';
-import { appShortcut } from '../server/system.mjs';
+import { spawnSync } from 'node:child_process';
+import { appShortcut, processInventoryScript } from '../server/system.mjs';
 import { endsWithQuestion, lastWords } from '../server/util.mjs';
 
 const lines = (...entries) => entries.map((e) => JSON.stringify(e)).join('\n');
@@ -176,6 +177,18 @@ test('installed app: only a Chats.lnk that launches an app id counts', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('process inventory: a name with no live process is not a failed inventory', { skip: process.platform !== 'win32' && 'Windows only', timeout: 60_000 }, () => {
+  const inventory = (names) =>
+    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', processInventoryScript(names)], { windowsHide: true, encoding: 'utf8' });
+  // The inventory shell itself is a live powershell process; the second name never exists.
+  const mixed = inventory(['powershell', 'agent-relay-absent-process']);
+  assert.equal(mixed.status, 0, 'one absent name keeps the inventory usable');
+  assert.match(mixed.stdout, /^\d+,powershell,\d+$/im);
+  const none = inventory(['agent-relay-absent-process', 'agent-relay-absent-other']);
+  assert.equal(none.status, 0, 'no live process is an empty inventory');
+  assert.equal(none.stdout.trim(), '');
 });
 
 test('Claude: a normal quit (Ctrl+C or /exit) is closed, even mid-turn; a resumed chat clears it', () => {
