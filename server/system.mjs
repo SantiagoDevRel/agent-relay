@@ -118,6 +118,12 @@ function exists(pid) {
   }
 }
 
+// Lists "pid,name,FILETIME" for the named processes. A name with no live process is a normal
+// "not found", not a failed inventory: without the explicit exit, no Codex running made every
+// verify fail. Any other error still fails.
+export const processInventoryScript = (names = ['claude', 'codex']) =>
+  `$e = $null; Get-Process -Name ${names.join(',')} -ErrorAction SilentlyContinue -ErrorVariable e | ForEach-Object { "$($_.Id),$($_.ProcessName),$(try { $_.StartTime.ToFileTimeUtc() } catch { 0 })" }; if (@($e | Where-Object { $_.FullyQualifiedErrorId -notlike "NoProcessFoundForGivenName*" }).Count) { exit 1 }; exit 0`;
+
 export class ProcessWatch {
   constructor() {
     this.known = new Map(); // pid -> 'claude.exe' | 'codex.exe'
@@ -134,7 +140,7 @@ export class ProcessWatch {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        'Get-Process -Name claude,codex -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Id),$($_.ProcessName),$(try { $_.StartTime.ToFileTimeUtc() } catch { 0 })" }',
+        processInventoryScript(),
       ]);
       if (ok) {
         const next = new Map();
